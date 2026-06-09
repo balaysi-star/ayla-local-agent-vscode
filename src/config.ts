@@ -49,8 +49,9 @@ export function getConfig(): AgentConfig {
   const envGatewayContainerSidecarChatBaseUrl = process.env.AYLA_GATEWAY_CONTAINER_SIDECAR_CHAT_BASE_URL ?? "";
   const envGatewayContainerSidecarOpenAiBaseUrl = process.env.AYLA_GATEWAY_CONTAINER_SIDECAR_OPENAI_BASE_URL ?? "";
   const envActiveModel = process.env.AYLA_ACTIVE_MODEL ?? "";
-  const activeModel = config.get<string>("activeModel", "") || envActiveModel;
-  const defaultModel = modernConfig.get<string>("ollama.defaultModel", "") || config.get<string>("defaultModel", "");
+  const legacyModelAlias = config.get<string>("model", "");
+  const activeModel = config.get<string>("activeModel", "") || legacyModelAlias || envActiveModel;
+  const defaultModel = modernConfig.get<string>("ollama.defaultModel", "") || config.get<string>("defaultModel", "") || legacyModelAlias;
   const baseUrl = modernConfig.get<string>("ollama.baseUrl", "") || config.get<string>("ollamaBaseUrl", envBaseUrl || "http://127.0.0.1:11434");
   return {
     ollamaBaseUrl: baseUrl,
