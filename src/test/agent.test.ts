@@ -930,6 +930,53 @@ test("planner invalid JSON for explicit safe diff task falls back to git_status 
   assert.ok(progressEvents.some((entry) => entry.includes("git diff -- .github\/agents\/ayla-engineer\.agent\.md")));
 });
 
+test("planner invalid JSON for exact git diff request falls back to git_status and exact-path git_diff", async () => {
+  let gitDiffPath: string | undefined;
+  let broadDiffCalled = 0;
+  const result = await runBoundedAgent(
+    baseConfig,
+    "model",
+    "read-only: run git diff for .github/agents/ayla-engineer.agent.md only. Do not edit files.",
+    createLogger(),
+    "D:\\repo",
+    {
+      runModel: async () => "{\"intent\":\"agent_task\",}",
+      collectBaseline: async () => ({
+        branch: "main",
+        head: "abc123",
+        statusPorcelain: " M .github/agents/ayla-engineer.agent.md",
+        clean: false,
+        toolsUsed: []
+      }),
+      gitStatus: async () => ({ decision: "ALLOWED_READ_ONLY", output: " M .github/agents/ayla-engineer.agent.md" }),
+      gitDiff: async () => {
+        broadDiffCalled += 1;
+        return { decision: "ALLOWED_READ_ONLY", output: "BROAD_DIFF_SHOULD_NOT_RUN" };
+      },
+      gitDiffForPath: async (_ctx, relativePath) => {
+        gitDiffPath = relativePath;
+        return {
+          decision: "ALLOWED_READ_ONLY",
+          output: "diff --git a/.github/agents/ayla-engineer.agent.md b/.github/agents/ayla-engineer.agent.md\n+line",
+          command: `git diff -- ${relativePath}`,
+          cwd: "D:\\repo",
+          truncated: false,
+          exitCode: 0
+        };
+      },
+      listDirectory: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+      readFile: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+      textSearch: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" })
+    }
+  );
+
+  assert.equal(result.action, "final");
+  assert.equal(gitDiffPath, ".github/agents/ayla-engineer.agent.md");
+  assert.equal(broadDiffCalled, 0);
+  assert.doesNotMatch(result.message ?? "", /PLANNER_SCHEMA_INVALID/);
+  assert.match(result.message ?? "", /diff inspected: yes/);
+});
+
 test("planner invalid JSON for explicit safe read request falls back to read_file only", async () => {
   let collectBaselineCalled = 0;
   let readPath: string | undefined;
@@ -1613,6 +1660,51 @@ test("planner invalid JSON for READ_ONLY_REPO_AUDIT_ANALYSIS_ONLY uses determini
   assert.deepEqual(readPaths, expectedReadPaths);
   assert.equal(gitDiffCalled, 0);
   assert.equal(textSearchCalled, 0);
+});
+
+test("planner invalid JSON for self-improve status request uses deterministic workspace status fallback", async () => {
+  const result = await runBoundedAgent(
+    baseConfig,
+    "model",
+    "self-improve status in read-only mode. Do not modify files. Return workspace status fields.",
+    createLogger(),
+    "D:\\repo",
+    {
+      runModel: async () => "{\"intent\":\"agent_task\",}",
+      collectBaseline: async () => ({
+        branch: "main",
+        head: "abc123",
+        statusPorcelain: "",
+        clean: true,
+        toolsUsed: []
+      }),
+      gitStatus: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+      gitDiff: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+      gitDiffForPath: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+      listDirectory: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+      readFile: async (_ctx, relativePath) => ({
+        decision: "ALLOWED_READ_ONLY",
+        output: relativePath === "package.json" ? "{\"version\":\"0.0.58\"}" : "",
+        cwd: "D:\\repo",
+        truncated: false,
+        exitCode: 0
+      }),
+      gatewayHealth: async () => ({
+        decision: "ALLOWED_READ_ONLY",
+        output: JSON.stringify({ status: "ok", selectedModel: "ayla-local-coder:latest", cloudFallbackUsed: false }),
+        command: "GET http://127.0.0.1:8089/health",
+        cwd: "D:\\repo",
+        truncated: false,
+        exitCode: 0
+      }),
+      textSearch: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" })
+    }
+  );
+
+  assert.equal(result.action, "final");
+  assert.doesNotMatch(result.message ?? "", /PLANNER_SCHEMA_INVALID/);
+  assert.match(result.message ?? "", /package version \(package\.json\): 0\.0\.58/);
+  assert.match(result.message ?? "", /gateway health \(http:\/\/127\.0\.0\.1:8089\/health\): ok/i);
 });
 
 test("read file policy blocker is reported instead of planner schema invalid", async () => {

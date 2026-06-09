@@ -975,7 +975,17 @@ function isSafeWorkspaceStatusFallbackRequest(prompt: string): boolean {
   if (isUnsafeFallbackRequest(prompt)) {
     return false;
   }
-  return /\b(workspace status|repo status|repository status|dirty state|git status|branch|head|status)\b/.test(normalized);
+  return /\b(workspace status|repo status|repository status|dirty state|git status|branch|head|full workspace status)\b/.test(normalized);
+}
+
+function isSelfImproveStatusFallbackRequest(prompt: string): boolean {
+  const normalized = prompt.toLowerCase();
+  if (isUnsafeFallbackRequest(prompt)) {
+    return false;
+  }
+  return /\bself-improve status\b/.test(normalized)
+    || /\bself improve status\b/.test(normalized)
+    || /\bself improvement status\b/.test(normalized);
 }
 
 function isFullWorkspaceStatusRequest(prompt: string): boolean {
@@ -994,7 +1004,7 @@ function extractExactGitDiffPath(prompt: string): string | undefined {
   if (isUnsafeFallbackRequest(prompt)) {
     return undefined;
   }
-  if (!/\bgit diff\b/.test(normalized) || !/\bgit status\b/.test(normalized)) {
+  if (!/\bgit diff\b/.test(normalized)) {
     return undefined;
   }
   const match = prompt.match(/\bgit diff for\s+([./A-Za-z0-9_-]+)/i);
@@ -1013,11 +1023,17 @@ function extractExactReadFilePath(prompt: string): string | undefined {
   if (isUnsafeFallbackRequest(prompt)) {
     return undefined;
   }
-  if (!/\bread only\b/.test(normalized)) {
+  const readOnlyMatch = /\bread only\s+([./A-Za-z0-9_-]+)/i.exec(prompt);
+  const readFileMatch = /\bread file\s+([./A-Za-z0-9_-]+)/i.exec(prompt);
+  const preferredMatch = readOnlyMatch ?? (
+    /\bread[- ]only\b/.test(normalized) || /\bdo not edit files\b/.test(normalized)
+      ? readFileMatch
+      : undefined
+  );
+  if (!preferredMatch) {
     return undefined;
   }
-  const match = prompt.match(/\bread only\s+([./A-Za-z0-9_-]+)/i);
-  const candidate = match?.[1]?.trim().replace(/[.,;:!?]+$/, "");
+  const candidate = preferredMatch[1]?.trim().replace(/[.,;:!?]+$/, "");
   if (!candidate || /\s{2,}/.test(candidate)) {
     return undefined;
   }
@@ -8453,6 +8469,7 @@ export async function runBoundedAgent(
     const exactDiffPath = extractExactGitDiffPath(prompt);
     const exactReadPath = extractExactReadFilePath(prompt);
     const scopedTextSearch = extractScopedTextSearchRequest(prompt);
+    const selfImproveStatusRequest = isSelfImproveStatusFallbackRequest(prompt);
     const readOnlyRepoAuditAnalysisRequest = isReadOnlyRepoAuditAnalysisFallbackRequest(prompt);
     const readOnlyRepoAuditRequest = isReadOnlyRepoAuditFallbackRequest(prompt);
     if (patchProposalTargetPath) {
@@ -8481,10 +8498,12 @@ export async function runBoundedAgent(
       planner = createSafeReadFileFallbackPlan(exactReadPath);
       usedSupervisorFallback = true;
       supervisorFallbackReason = "Planner schema/semantic validation failed; supervisor inferred a safe exact-path read_file fallback.";
-    } else if (isSafeWorkspaceStatusFallbackRequest(prompt)) {
+    } else if (selfImproveStatusRequest || isSafeWorkspaceStatusFallbackRequest(prompt)) {
       planner = createSafeWorkspaceStatusFallbackPlan();
       usedSupervisorFallback = true;
-      supervisorFallbackReason = "Planner schema/semantic validation failed; supervisor inferred a safe git status fallback.";
+      supervisorFallbackReason = selfImproveStatusRequest
+        ? "Planner schema/semantic validation failed; supervisor inferred a safe self-improve/full workspace status fallback."
+        : "Planner schema/semantic validation failed; supervisor inferred a safe git status fallback.";
     } else {
       return {
         action: "blocked",
