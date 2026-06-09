@@ -1,6 +1,6 @@
 import { AgentConfig } from "./config";
 import { OllamaModel } from "./types";
-import { ProviderChatMessage } from "./modelProvider/ollamaClient";
+import { ProviderChatMessage, getStreamDiagnostics } from "./modelProvider/ollamaClient";
 import { createModelProvider } from "./modelProvider/providerFactory";
 import { buildGatewayConnectivityReport } from "./gatewayConnectivity";
 import { GatewayConnectivityError } from "./modelProvider/gatewayClient";
@@ -91,6 +91,30 @@ function buildGeneratePrompt(messages: Array<{ role: "system" | "user" | "assist
   return messages.map((message) => `${message.role.toUpperCase()}: ${message.content}`).join("\n\n");
 }
 
+function buildOllamaChatDiagnostic(error: Error): Error {
+  const diagnostics = getStreamDiagnostics(error);
+  if (!diagnostics) {
+    return new Error(`OLLAMA_CHAT_FAILED\n* code: ${error.message}\n* nested error: ${error.message}`);
+  }
+
+  return new Error([
+    "OLLAMA_CHAT_DIAGNOSTIC",
+    `* code: ${error.message}`,
+    `* endpoint: ${diagnostics.endpoint}`,
+    `* model: ${diagnostics.model || "unset"}`,
+    `* httpStatus: ${diagnostics.httpStatus ?? "none"}`,
+    `* timeout: ${diagnostics.timeout}`,
+    `* cancelled: ${diagnostics.cancelled}`,
+    `* chunksReceived: ${diagnostics.chunksReceived}`,
+    `* bytesReceived: ${diagnostics.bytesReceived}`,
+    `* firstTokenReceived: ${diagnostics.firstTokenReceived}`,
+    `* interruptedReason: ${diagnostics.lifecycle.interruptedReason ?? "none"}`,
+    `* nestedError: ${diagnostics.nestedError ?? "none"}`,
+    `* promptCharacters: ${diagnostics.promptCharacters}`,
+    `* messageCount: ${diagnostics.messageCount}`
+  ].join("\n"));
+}
+
 export async function discoverModels(config: AgentConfig): Promise<OllamaModel[]> {
   const provider = createModelProvider(config, config.activeModel || config.defaultModel);
   try {
@@ -118,6 +142,10 @@ export async function runChat(
   model: string,
   messages: Array<{ role: "system" | "user" | "assistant"; content: string }>
 ): Promise<string> {
+  if (!model || model.trim().length === 0) {
+    throw new Error("MODEL_NOT_CONFIGURED");
+  }
+
   const provider = createModelProvider(config, model);
   try {
     return await provider.chat(messages as ProviderChatMessage[]);
@@ -140,6 +168,9 @@ export async function runChat(
     }
     if (error instanceof Error && error.message.startsWith("MODEL_RESPONSE_INVALID")) {
       throw error;
+    }
+    if (error instanceof Error) {
+      throw buildOllamaChatDiagnostic(error);
     }
     throw new Error("OLLAMA_UNAVAILABLE");
   }
