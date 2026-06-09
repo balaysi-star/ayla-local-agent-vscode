@@ -168,8 +168,12 @@ test("negated read-only audit prompt does not trigger approval apply path", asyn
     { patchSession }
   );
 
-  assert.equal(result.action, "blocked");
-  assert.match(result.message ?? "", /PLANNER_SCHEMA_INVALID/);
+  assert.equal(result.action, "final");
+  assert.match(result.message ?? "", /### FACTS/);
+  assert.match(result.message ?? "", /### WEAKNESSES/);
+  assert.match(result.message ?? "", /### ENGINEERING_BACKLOG/);
+  assert.match(result.message ?? "", /### FIRST_READ_ONLY_VERIFICATION/);
+  assert.match(result.message ?? "", /### UNKNOWN/);
   assert.doesNotMatch(result.message ?? "", /NO_PENDING_PATCH/);
   assert.doesNotMatch(result.message ?? "", /Approval Boundary/);
 });

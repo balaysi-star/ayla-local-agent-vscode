@@ -1054,6 +1054,28 @@ function extractScopedTextSearchRequest(prompt: string): { query: string; path: 
   return { query, path: path.replace(/^\.\//, "") };
 }
 
+const READ_ONLY_REPO_AUDIT_PATHS = [
+  "package.json",
+  "src/selfImprove.ts",
+  "src/skills.ts",
+  "src/router.ts",
+  "src/agent.ts",
+  "src/tools.ts",
+  "src/config.ts",
+  "src/requestRouting.ts",
+  "scripts/ayla.ps1"
+] as const;
+
+function isReadOnlyRepoAuditFallbackRequest(prompt: string): boolean {
+  const normalized = prompt.toLowerCase();
+  if (isUnsafeFallbackRequest(prompt)) {
+    return false;
+  }
+  return /\bread_only_repo_audit_only\b/.test(normalized)
+    || /\bread[- ]only\b.*\b(repo|repository)\b.*\baudit\b/.test(normalized)
+    || /\breturn\s+facts\s*,\s*weaknesses\s*,\s*engineering_backlog\s*,\s*first_read_only_verification\s*,\s*unknown\b/.test(normalized);
+}
+
 function extractPatchProposalOnlyTargetPath(prompt: string): string | undefined {
   const normalized = prompt.toLowerCase();
   if (!/\bpatch proposal only\b/.test(normalized) && !/\bprepare a patch proposal only\b/.test(normalized)) {
@@ -7191,6 +7213,33 @@ function createPatchProposalOnlyFallbackPlan(relativePath: string): PlannerDecis
   };
 }
 
+function createReadOnlyRepoAuditFallbackPlan(): PlannerDecision {
+  const readSteps = READ_ONLY_REPO_AUDIT_PATHS.map((auditPath) => ({
+    step: `Read ${auditPath} in read-only mode for audit evidence.`,
+    tool: "read_file" as const,
+    args: { path: auditPath, allow_missing: true },
+    reason: "READ_ONLY_REPO_AUDIT_ONLY requires deterministic evidence from explicitly allowed safe files.",
+    risk: "low" as const
+  }));
+
+  return {
+    intent: "agent_task",
+    summary: "Collect deterministic read-only repository audit evidence and produce a structured audit report.",
+    needsTools: true,
+    plan: [
+      {
+        step: "Collect read-only git workspace status.",
+        tool: "git_status",
+        args: {},
+        reason: "Read-only repo audit needs branch, HEAD, and dirty-state evidence.",
+        risk: "low"
+      },
+      ...readSteps
+    ],
+    stopCondition: "When git status and deterministic read-only file evidence are captured for FACTS/WEAKNESSES/ENGINEERING_BACKLOG/FIRST_READ_ONLY_VERIFICATION/UNKNOWN."
+  };
+}
+
 function validatePlannerSemantics(prompt: string, decision: PlannerDecision): void {
   const nonNoneTools = decision.plan.filter((step) => step.tool !== "none");
 
@@ -8001,6 +8050,75 @@ function buildPatchProposalOnlyFinal(observations: ObservationRecord[], config: 
   };
 }
 
+function buildReadOnlyRepoAuditFinal(observations: ObservationRecord[], config: AgentConfig): ActionEnvelope {
+  const statusObservation = observations.find((entry) => entry.tool === "git_status");
+  const baselineMap = new Map(
+    (statusObservation?.details ?? [])
+      .map((line) => {
+        const separator = line.indexOf(": ");
+        return separator >= 0 ? [line.slice(0, separator), line.slice(separator + 2)] as const : undefined;
+      })
+      .filter((entry): entry is readonly [string, string] => Boolean(entry))
+  );
+
+  const readObservations = observations.filter((entry) => entry.tool === "read_file");
+  const attempted = new Map<string, string>();
+  for (const entry of readObservations) {
+    const pathLine = entry.details.find((line) => line.startsWith("read_file_path: "));
+    const outputLine = entry.details.find((line) => line.startsWith("read_file_output: "));
+    const filePath = pathLine?.slice("read_file_path: ".length);
+    const output = outputLine?.slice("read_file_output: ".length) ?? "READ_FILE_UNAVAILABLE:UNKNOWN";
+    if (filePath) {
+      attempted.set(filePath, output);
+    }
+  }
+
+  const availableFiles = Array.from(attempted.entries())
+    .filter(([, output]) => !/^READ_FILE_(UNAVAILABLE|POLICY_BLOCKED):/i.test(output))
+    .map(([filePath]) => filePath);
+  const missingEvidence = Array.from(attempted.entries())
+    .filter(([, output]) => /^READ_FILE_(UNAVAILABLE|POLICY_BLOCKED):/i.test(output))
+    .map(([filePath, output]) => `${filePath}: ${output}`);
+  const toolsUsed = Array.from(new Set(observations.map((entry) => entry.tool)));
+
+  return {
+    action: "final",
+    message: sanitizeVisibleOutput([
+      "## Final Report",
+      "",
+      "### FACTS",
+      `- branch: ${baselineMap.get("branch") ?? "UNKNOWN_NOT_INSPECTED"}`,
+      `- HEAD: ${baselineMap.get("HEAD") ?? "UNKNOWN_NOT_INSPECTED"}`,
+      `- git status clean/dirty: ${(baselineMap.get("git_status_clean") ?? "false") === "true" ? "clean" : "dirty"}`,
+      `- modified files: ${baselineMap.get("git_status_output") ?? "UNKNOWN_NOT_INSPECTED"}`,
+      `- attempted audit files: ${READ_ONLY_REPO_AUDIT_PATHS.join(", ")}`,
+      `- available audit evidence files: ${availableFiles.length > 0 ? availableFiles.join(", ") : "none"}`,
+      `- tools used: ${toolsUsed.join(", ")}`,
+      "- patch applied: no",
+      "- files modified: no",
+      "",
+      "### WEAKNESSES",
+      `- missing or blocked file evidence count: ${missingEvidence.length}`,
+      `- missing or blocked file evidence: ${missingEvidence.length > 0 ? missingEvidence.join(" | ") : "none observed"}`,
+      "- audit depends on current working-tree state and may require re-run after repo changes",
+      "",
+      "### ENGINEERING_BACKLOG",
+      "- add deterministic schema-safe fallback routing for other explicit read-only audit intents",
+      "- add optional scoped text_search enrichment for unresolved UNKNOWN entries",
+      "- extend audit summary with per-file checksum snippets for stronger evidence traceability",
+      "",
+      "### FIRST_READ_ONLY_VERIFICATION",
+      "- rerun this same READ_ONLY_REPO_AUDIT_ONLY prompt and compare FACTS plus missing-evidence lines",
+      `- first missing-evidence check target: ${missingEvidence[0] ?? "none"}`,
+      "- verify no write/apply actions occurred (patch applied: no, files modified: no)",
+      "",
+      "### UNKNOWN",
+      `- unresolved evidence items: ${missingEvidence.length > 0 ? missingEvidence.join(" | ") : "none"}`,
+      `- gateway health not collected in this deterministic audit fallback: ${toolsUsed.includes("gateway_health") ? "collected" : "not collected"}`
+    ].join("\n"), config.maxTraceOutputBytes)
+  };
+}
+
 function buildCasualResponse(prompt: string): string {
   if (/what can you do/i.test(prompt)) {
     return "Ayla Local Agent can inspect workspace status, read files, search text, show targeted diffs, propose patches, and run approved local validations using local Ollama models.";
@@ -8157,6 +8275,7 @@ export async function runBoundedAgent(
   let plannerRaw = "";
   let usedSupervisorFallback = false;
   let supervisorFallbackReason = "";
+  let usedReadOnlyRepoAuditFallback = false;
   let selectedSkill: SkillSelection | undefined;
   let patchProposalTargetPath: string | undefined = extractPatchProposalOnlyTargetPath(prompt);
   try {
@@ -8177,10 +8296,16 @@ export async function runBoundedAgent(
     const exactDiffPath = extractExactGitDiffPath(prompt);
     const exactReadPath = extractExactReadFilePath(prompt);
     const scopedTextSearch = extractScopedTextSearchRequest(prompt);
+    const readOnlyRepoAuditRequest = isReadOnlyRepoAuditFallbackRequest(prompt);
     if (patchProposalTargetPath) {
       planner = createPatchProposalOnlyFallbackPlan(patchProposalTargetPath);
       usedSupervisorFallback = true;
       supervisorFallbackReason = "Planner schema/semantic validation failed; supervisor inferred a safe proposal-only patch review fallback backed by read-only evidence.";
+    } else if (readOnlyRepoAuditRequest) {
+      planner = createReadOnlyRepoAuditFallbackPlan();
+      usedSupervisorFallback = true;
+      usedReadOnlyRepoAuditFallback = true;
+      supervisorFallbackReason = "Planner schema/semantic validation failed; supervisor inferred deterministic READ_ONLY_REPO_AUDIT_ONLY read-only fallback evidence collection.";
     } else if (exactDiffPath) {
       planner = createSafeWorkspaceDiffFallbackPlan(exactDiffPath);
       usedSupervisorFallback = true;
@@ -8375,6 +8500,7 @@ export async function runBoundedAgent(
       }
       case "read_file": {
         const targetPath = typeof step.args?.path === "string" ? step.args.path : "";
+        const allowMissing = step.args?.allow_missing === true;
         if (!targetPath) {
           return { action: "blocked", message: "READ_FILE_PATH_REQUIRED" };
         }
@@ -8392,12 +8518,37 @@ export async function runBoundedAgent(
               truncated: false,
               exitCode: 0
             };
+          } else if (allowMissing) {
+            result = {
+              decision: "ALLOWED_READ_ONLY",
+              output: `READ_FILE_UNAVAILABLE:${message}`,
+              cwd: toolCtx.workspaceRoot,
+              truncated: false,
+              exitCode: 1
+            };
           } else {
             return { action: "blocked", message: `READ_FILE_FAILED:${message}` };
           }
         }
         emit("tool_selected", renderToolTrace(index + 1, step, result.decision, result.command, result.cwd, config.showModelActionJson));
         if (result.decision !== "ALLOWED_READ_ONLY") {
+          if (allowMissing) {
+            observations.push({
+              tool: "read_file",
+              policyDecision: result.decision,
+              summary: "File read unavailable but audit continues.",
+              details: [
+                `read_file_path: ${targetPath}`,
+                `read_file_output: READ_FILE_POLICY_BLOCKED:${result.decision}`
+              ],
+              filesRead: [targetPath],
+              cwd: result.cwd,
+              truncated: result.truncated,
+              exitCode: result.exitCode
+            });
+            emit("observation", renderObservationTrace(`READ_FILE_POLICY_BLOCKED:${result.decision}`, result.truncated, result.exitCode, index + 1 < planner.plan.length ? "Continue with the next planned step." : planner.stopCondition, config.showCommandOutput, config.maxTraceOutputBytes));
+            continue;
+          }
           emit("blocked", renderBlockedTrace("read_file", `POLICY_${result.decision}`, "Use a safer workspace-relative path."));
           return { action: "blocked", message: `POLICY_${result.decision}` };
         }
@@ -8488,6 +8639,9 @@ export async function runBoundedAgent(
   emit("final_report", "### Final Report\n\n* Planner stop condition reached.");
   if (selectedSkill?.skill.name === "patch_proposal_skill" && patchProposalTargetPath) {
     return buildPatchProposalOnlyFinal(observations, config, selectedSkill, patchProposalTargetPath);
+  }
+  if (usedReadOnlyRepoAuditFallback) {
+    return buildReadOnlyRepoAuditFinal(observations, config);
   }
   return buildEvidenceBackedFinal(planner.summary, observations, config, selectedSkill);
 }

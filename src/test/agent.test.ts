@@ -1370,6 +1370,125 @@ test("safe read fallback does not run for broad or unclear read requests", async
   assert.equal(readFileCalled, 0);
 });
 
+test("planner invalid JSON for READ_ONLY_REPO_AUDIT_ONLY uses deterministic read-only audit fallback", async () => {
+  const prompt = "READ_ONLY_REPO_AUDIT_ONLY. Do not apply patches. Do not use /apply. Do not modify files. Do not commit. Do not create patches. Inspect package.json, src/selfImprove.ts, src/skills.ts, src/router.ts, src/agent.ts, src/tools.ts, src/config.ts, src/requestRouting.ts, scripts/ayla.ps1. Return FACTS, WEAKNESSES, ENGINEERING_BACKLOG, FIRST_READ_ONLY_VERIFICATION, UNKNOWN.";
+  const expectedReadPaths = [
+    "package.json",
+    "src/selfImprove.ts",
+    "src/skills.ts",
+    "src/router.ts",
+    "src/agent.ts",
+    "src/tools.ts",
+    "src/config.ts",
+    "src/requestRouting.ts",
+    "scripts/ayla.ps1"
+  ];
+  const readPaths: string[] = [];
+  let gitDiffCalled = 0;
+  let textSearchCalled = 0;
+
+  const result = await runBoundedAgent(
+    baseConfig,
+    "model",
+    prompt,
+    createLogger(),
+    "D:\\repo",
+    {
+      runModel: async () => "{\"intent\":\"agent_task\",}",
+      collectBaseline: async () => ({
+        branch: "main",
+        head: "abc123",
+        statusPorcelain: " M src/agent.ts",
+        clean: false,
+        toolsUsed: []
+      }),
+      gitStatus: async () => ({ decision: "ALLOWED_READ_ONLY", output: " M src/agent.ts" }),
+      gitDiff: async () => {
+        gitDiffCalled += 1;
+        return { decision: "ALLOWED_READ_ONLY", output: "" };
+      },
+      gitDiffForPath: async () => {
+        gitDiffCalled += 1;
+        return { decision: "ALLOWED_READ_ONLY", output: "" };
+      },
+      listDirectory: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+      readFile: async (_ctx, relativePath) => {
+        readPaths.push(relativePath);
+        if (relativePath === "src/selfImprove.ts") {
+          throw new Error("ENOENT: no such file or directory");
+        }
+        return {
+          decision: "ALLOWED_READ_ONLY",
+          output: `read-only content from ${relativePath}`,
+          cwd: "D:\\repo",
+          truncated: false,
+          exitCode: 0
+        };
+      },
+      textSearch: async () => {
+        textSearchCalled += 1;
+        return { decision: "ALLOWED_READ_ONLY", output: "" };
+      }
+    }
+  );
+
+  assert.equal(result.action, "final");
+  assert.doesNotMatch(result.message ?? "", /NO_PENDING_PATCH/);
+  assert.doesNotMatch(result.message ?? "", /PLANNER_SCHEMA_INVALID/);
+  assert.match(result.message ?? "", /### FACTS/);
+  assert.match(result.message ?? "", /### WEAKNESSES/);
+  assert.match(result.message ?? "", /### ENGINEERING_BACKLOG/);
+  assert.match(result.message ?? "", /### FIRST_READ_ONLY_VERIFICATION/);
+  assert.match(result.message ?? "", /### UNKNOWN/);
+  assert.match(result.message ?? "", /tools used: git_status, read_file/);
+  assert.match(result.message ?? "", /files modified: no/);
+  assert.deepEqual(readPaths, expectedReadPaths);
+  assert.equal(gitDiffCalled, 0);
+  assert.equal(textSearchCalled, 0);
+});
+
+test("READ_ONLY_REPO_AUDIT_ONLY fallback continues when one file read is unavailable", async () => {
+  const result = await runBoundedAgent(
+    baseConfig,
+    "model",
+    "READ_ONLY_REPO_AUDIT_ONLY. Do not apply patches. Do not use /apply. Do not modify files. Do not commit. Do not create patches.",
+    createLogger(),
+    "D:\\repo",
+    {
+      runModel: async () => "{\"intent\":\"agent_task\",}",
+      collectBaseline: async () => ({
+        branch: "main",
+        head: "abc123",
+        statusPorcelain: "",
+        clean: true,
+        toolsUsed: []
+      }),
+      gitStatus: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+      gitDiff: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+      gitDiffForPath: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+      listDirectory: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+      readFile: async (_ctx, relativePath) => {
+        if (relativePath === "src/tools.ts") {
+          throw new Error("ENOENT: no such file or directory");
+        }
+        return {
+          decision: "ALLOWED_READ_ONLY",
+          output: "ok",
+          cwd: "D:\\repo",
+          truncated: false,
+          exitCode: 0
+        };
+      },
+      textSearch: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" })
+    }
+  );
+
+  assert.equal(result.action, "final");
+  assert.match(result.message ?? "", /READ_FILE_UNAVAILABLE/);
+  assert.match(result.message ?? "", /### UNKNOWN/);
+  assert.doesNotMatch(result.message ?? "", /PLANNER_SCHEMA_INVALID/);
+});
+
 test("read file policy blocker is reported instead of planner schema invalid", async () => {
   const result = await runBoundedAgent(
     baseConfig,
