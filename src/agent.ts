@@ -177,8 +177,11 @@ const AYLA_ENGINEERING_AGENT_WORKFLOW = "AYLA_ENGINEERING_AGENT_WORKFLOW";
 const CODEX_STYLE_WORK_SESSION_ENGINE = "CODEX_STYLE_WORK_SESSION_ENGINE";
 const LOCAL_ENGINEER_EXECUTION_MODE_TOKEN = "LOCAL_ENGINEER_EXECUTION_MODE";
 const LOCAL_ENGINEER_FRONT_PLANNER_SCHEMA_RELIABILITY = "PLANNER_SCHEMA_RELIABILITY_FOR_KNOWN_INTENTS";
+const LOCAL_ENGINEER_FRONT_SELF_IMPROVEMENT_V1 = "LOCAL_ENGINEER_SELF_IMPROVEMENT_V1";
+const LOCAL_ENGINEER_TEST_OUTPUT_MAX_CHARS = 1200;
 const LOCAL_ENGINEER_ALLOWED_FRONTS = new Set<string>([
-  LOCAL_ENGINEER_FRONT_PLANNER_SCHEMA_RELIABILITY
+  LOCAL_ENGINEER_FRONT_PLANNER_SCHEMA_RELIABILITY,
+  LOCAL_ENGINEER_FRONT_SELF_IMPROVEMENT_V1
 ]);
 
 const PRODUCTION_COMMAND_ALLOWLIST = [
@@ -218,6 +221,14 @@ interface LocalEngineerFrontExecutionResult {
   verdict: "NO_CHANGES_REQUIRED" | "CHANGES_APPLIED" | "BLOCKED";
   changedFiles: string[];
   blockers: string[];
+  discoveredBacklog?: string[];
+}
+
+interface LocalEngineerImprovementCandidate {
+  id: string;
+  target: string;
+  description: string;
+  apply(content: string): { content: string; changed: boolean };
 }
 
 function isLocalEngineerExecutionModePrompt(prompt: string): boolean {
@@ -376,7 +387,154 @@ async function executeLocalEngineerFront(
     return { verdict: "CHANGES_APPLIED", changedFiles: [target], blockers: [] };
   }
 
+  if (front === LOCAL_ENGINEER_FRONT_SELF_IMPROVEMENT_V1) {
+    const improvements = await applyLocalEngineerSelfImprovementV1(workspaceRoot, scope);
+    return improvements;
+  }
+
   return { verdict: "BLOCKED", changedFiles: [], blockers: ["LOCAL_ENGINEER_FRONT_UNKNOWN"] };
+}
+
+function normalizeLocalEngineerRelativePath(relativePath: string): string {
+  return relativePath.replace(/\\/g, "/").replace(/^\.\//, "").replace(/^\/+/, "");
+}
+
+async function collectScopedInspectionFiles(workspaceRoot: string, scope: string[]): Promise<string[]> {
+  const files = new Set<string>();
+  const visitedDirs = new Set<string>();
+  const workspaceAbsolute = path.resolve(workspaceRoot).replace(/\\/g, "/").toLowerCase();
+
+  const walkDirectory = async (absoluteDir: string): Promise<void> => {
+    const normalizedDir = absoluteDir.replace(/\\/g, "/").toLowerCase();
+    if (visitedDirs.has(normalizedDir)) {
+      return;
+    }
+    visitedDirs.add(normalizedDir);
+    const entries = await fs.readdir(absoluteDir, { withFileTypes: true });
+    for (const entry of entries) {
+      const absoluteEntry = path.join(absoluteDir, entry.name);
+      if (entry.isDirectory()) {
+        await walkDirectory(absoluteEntry);
+        continue;
+      }
+      if (!entry.isFile()) {
+        continue;
+      }
+      const normalizedAbsolute = absoluteEntry.replace(/\\/g, "/").toLowerCase();
+      if (!(normalizedAbsolute === workspaceAbsolute || normalizedAbsolute.startsWith(`${workspaceAbsolute}/`))) {
+        continue;
+      }
+      const relative = normalizeLocalEngineerRelativePath(path.relative(workspaceRoot, absoluteEntry));
+      if (!isPathWithinLocalEngineerScope(relative, scope)) {
+        continue;
+      }
+      files.add(relative);
+    }
+  };
+
+  for (const rawEntry of scope) {
+    const normalizedEntry = normalizeLocalEngineerRelativePath(rawEntry.replace(/\*$/, "")).replace(/\/$/, "");
+    if (!normalizedEntry) {
+      continue;
+    }
+    const absoluteEntry = path.resolve(workspaceRoot, normalizedEntry);
+    const normalizedAbsolute = absoluteEntry.replace(/\\/g, "/").toLowerCase();
+    if (!(normalizedAbsolute === workspaceAbsolute || normalizedAbsolute.startsWith(`${workspaceAbsolute}/`))) {
+      continue;
+    }
+    try {
+      const stats = await fs.stat(absoluteEntry);
+      if (stats.isDirectory()) {
+        await walkDirectory(absoluteEntry);
+      } else if (stats.isFile()) {
+        const relative = normalizeLocalEngineerRelativePath(path.relative(workspaceRoot, absoluteEntry));
+        if (isPathWithinLocalEngineerScope(relative, scope)) {
+          files.add(relative);
+        }
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return Array.from(files).sort((a, b) => a.localeCompare(b));
+}
+
+function buildLocalEngineerSelfImprovementCandidates(scopedFiles: string[]): LocalEngineerImprovementCandidate[] {
+  const candidates: LocalEngineerImprovementCandidate[] = [];
+  if (scopedFiles.includes("src/agent.ts")) {
+    candidates.push({
+      id: "LOCAL_ENGINEER_TEST_OUTPUT_TAIL_V1",
+      target: "src/agent.ts",
+      description: "Preserve failure-tail output snippet with 1200-char bound for LOCAL_ENGINEER test blockers",
+      apply(content: string): { content: string; changed: boolean } {
+        const oldBlock = [
+          "      const compactOutput = (result.output || \"\").replace(/\\s+/g, \" \").trim();",
+          "      if (compactOutput.length > 0) {",
+          "        failingTestOutputSnippet = truncate(compactOutput, 220);",
+          "      }"
+        ].join("\\n");
+        const newBlock = [
+          "      failingTestOutputSnippet = buildLocalEngineerTailSnippet(result.output);"
+        ].join("\\n");
+        if (!content.includes(oldBlock)) {
+          return { content, changed: false };
+        }
+        return {
+          content: content.replace(oldBlock, newBlock),
+          changed: true
+        };
+      }
+    });
+  }
+  return candidates;
+}
+
+async function applyLocalEngineerSelfImprovementV1(
+  workspaceRoot: string,
+  scope: string[]
+): Promise<LocalEngineerFrontExecutionResult> {
+  const scopedFiles = await collectScopedInspectionFiles(workspaceRoot, scope);
+  const candidates = buildLocalEngineerSelfImprovementCandidates(scopedFiles);
+  const discoveredBacklog = candidates.map((candidate) => candidate.description);
+
+  for (const candidate of candidates) {
+    if (!isPathWithinLocalEngineerScope(candidate.target, scope)) {
+      continue;
+    }
+    const absoluteTarget = path.join(workspaceRoot, candidate.target);
+    const existing = await fs.readFile(absoluteTarget, "utf8");
+    const patched = candidate.apply(existing);
+    if (!patched.changed) {
+      continue;
+    }
+    await fs.writeFile(absoluteTarget, patched.content, "utf8");
+    return {
+      verdict: "CHANGES_APPLIED",
+      changedFiles: [candidate.target],
+      blockers: [],
+      discoveredBacklog
+    };
+  }
+
+  return {
+    verdict: "NO_CHANGES_REQUIRED",
+    changedFiles: [],
+    blockers: [],
+    discoveredBacklog
+  };
+}
+
+function buildLocalEngineerTailSnippet(rawOutput: string | undefined): string | undefined {
+  const normalized = (rawOutput || "").replace(/\r\n/g, "\n").trim();
+  if (!normalized) {
+    return undefined;
+  }
+  if (normalized.length <= LOCAL_ENGINEER_TEST_OUTPUT_MAX_CHARS) {
+    return normalized;
+  }
+  const tail = normalized.slice(-LOCAL_ENGINEER_TEST_OUTPUT_MAX_CHARS);
+  return `...${tail}`;
 }
 
 async function runLocalEngineerExecutionMode(
@@ -461,10 +619,7 @@ async function runLocalEngineerExecutionMode(
     testResults.push(line);
     if (result.exitCode !== 0 || result.decision !== "ALLOWED_READ_ONLY") {
       testsPassed = false;
-      const compactOutput = (result.output || "").replace(/\s+/g, " ").trim();
-      if (compactOutput.length > 0) {
-        failingTestOutputSnippet = truncate(compactOutput, 220);
-      }
+      failingTestOutputSnippet = buildLocalEngineerTailSnippet(result.output);
       break;
     }
   }
@@ -521,6 +676,11 @@ async function runLocalEngineerExecutionMode(
       "",
       "### commit",
       commitSha,
+      "",
+      "### discovered backlog",
+      ...(frontExecution.discoveredBacklog && frontExecution.discoveredBacklog.length > 0
+        ? frontExecution.discoveredBacklog.slice(0, 5)
+        : ["none"]),
       "",
       "### blockers",
       ...(blockers.length > 0 ? blockers : ["none"])

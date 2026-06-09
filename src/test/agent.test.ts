@@ -1031,13 +1031,14 @@ test("LOCAL_ENGINEER_EXECUTION_MODE enforces scoped edits only", async () => {
 
 test("LOCAL_ENGINEER_EXECUTION_MODE blocks commit when tests fail", async () => {
   let commitAttempted = false;
+  const longFailureOutput = `${"prefix ".repeat(400)}\nASSERTION_MARKER_TAIL`;
   const result = await runBoundedAgent(
     baseConfig,
     "model",
     localEngineerPrompt({
       front: "PLANNER_SCHEMA_RELIABILITY_FOR_KNOWN_INTENTS",
       scope: "src/agent.ts",
-      tests: "npm.cmd run compile; npm.cmd test"
+      tests: "node --test out/test/agent.test.js"
     }),
     createLogger(),
     "D:\\repo",
@@ -1051,10 +1052,10 @@ test("LOCAL_ENGINEER_EXECUTION_MODE blocks commit when tests fail", async () => 
         if (command.startsWith("git commit")) {
           commitAttempted = true;
         }
-        if (command === "npm.cmd test") {
+        if (command === "node --test out/test/agent.test.js") {
           return {
             decision: "BLOCKED",
-            output: "tests failed",
+            output: longFailureOutput,
             command,
             cwd: "D:\\repo",
             truncated: false,
@@ -1077,8 +1078,98 @@ test("LOCAL_ENGINEER_EXECUTION_MODE blocks commit when tests fail", async () => 
   assert.equal(result.action, "final");
   assert.match(result.message ?? "", /LOCAL_ENGINEER_EXECUTION_BLOCKED/);
   assert.match(result.message ?? "", /LOCAL_ENGINEER_TESTS_FAILED/);
-  assert.match(result.message ?? "", /LOCAL_ENGINEER_TEST_OUTPUT:tests failed/);
+  assert.match(result.message ?? "", /LOCAL_ENGINEER_TEST_OUTPUT:[\s\S]*ASSERTION_MARKER_TAIL/);
   assert.match(result.message ?? "", /### commit\nnone/);
+});
+
+test("LOCAL_ENGINEER_EXECUTION_MODE failed test output snippet is bounded", async () => {
+  const longFailureOutput = `${"x".repeat(3000)}TAIL_BOUNDARY_MARKER`;
+  const result = await runBoundedAgent(
+    baseConfig,
+    "model",
+    localEngineerPrompt({
+      front: "PLANNER_SCHEMA_RELIABILITY_FOR_KNOWN_INTENTS",
+      scope: "src/agent.ts",
+      tests: "node --test out/test/agent.test.js"
+    }),
+    createLogger(),
+    "D:\\repo",
+    createLocalEngineerRuntimeDeps({
+      executeLocalEngineerFront: async () => ({
+        verdict: "CHANGES_APPLIED",
+        changedFiles: ["src/agent.ts"],
+        blockers: []
+      }),
+      runLocalEngineerCommand: async (_workspaceRoot: string, command: string) => {
+        if (command === "node --test out/test/agent.test.js") {
+          return {
+            decision: "BLOCKED",
+            output: longFailureOutput,
+            command,
+            cwd: "D:\\repo",
+            truncated: false,
+            exitCode: 1
+          };
+        }
+        return {
+          decision: "ALLOWED_READ_ONLY",
+          output: "ok",
+          command,
+          cwd: "D:\\repo",
+          truncated: false,
+          exitCode: 0
+        };
+      }
+    }) as never
+  );
+
+  const snippetMatch = (result.message ?? "").match(/LOCAL_ENGINEER_TEST_OUTPUT:([^\n]+)/);
+  assert.ok(snippetMatch);
+  assert.ok((snippetMatch?.[1].length ?? 0) <= 1203);
+  assert.match(result.message ?? "", /TAIL_BOUNDARY_MARKER/);
+});
+
+test("LOCAL_ENGINEER_SELF_IMPROVEMENT_V1 is accepted", async () => {
+  const result = await runBoundedAgent(
+    baseConfig,
+    "model",
+    localEngineerPrompt({
+      front: "LOCAL_ENGINEER_SELF_IMPROVEMENT_V1",
+      scope: "src/agent.ts",
+      tests: "node --test out/test/agent.test.js"
+    }),
+    createLogger(),
+    "D:\\repo",
+    createLocalEngineerRuntimeDeps() as never
+  );
+
+  assert.equal(result.action, "final");
+  assert.doesNotMatch(result.message ?? "", /LOCAL_ENGINEER_FRONT_UNKNOWN/);
+});
+
+test("LOCAL_ENGINEER_SELF_IMPROVEMENT_V1 enforces scoped edits only", async () => {
+  const result = await runBoundedAgent(
+    baseConfig,
+    "model",
+    localEngineerPrompt({
+      front: "LOCAL_ENGINEER_SELF_IMPROVEMENT_V1",
+      scope: "src/agent.ts",
+      tests: "node --test out/test/agent.test.js"
+    }),
+    createLogger(),
+    "D:\\repo",
+    createLocalEngineerRuntimeDeps({
+      executeLocalEngineerFront: async () => ({
+        verdict: "CHANGES_APPLIED",
+        changedFiles: ["src/agent.ts", "src/test/agent.test.ts"],
+        blockers: []
+      })
+    }) as never
+  );
+
+  assert.equal(result.action, "final");
+  assert.match(result.message ?? "", /LOCAL_ENGINEER_EXECUTION_BLOCKED/);
+  assert.match(result.message ?? "", /LOCAL_ENGINEER_SCOPE_VIOLATION:src\/test\/agent.test.ts/);
 });
 
 test("LOCAL_ENGINEER_EXECUTION_MODE commits when tests pass", async () => {
