@@ -222,13 +222,23 @@ interface LocalEngineerFrontExecutionResult {
   changedFiles: string[];
   blockers: string[];
   discoveredBacklog?: string[];
+  closedImprovements?: string[];
 }
 
 interface LocalEngineerImprovementCandidate {
   id: string;
   target: string;
   description: string;
-  apply(content: string): { content: string; changed: boolean };
+  evaluate(inspectedContent: string | undefined): {
+    status: "pending" | "already_applied" | "blocked";
+    blocker?: string;
+    apply?: (content: string) => { content: string; changed: boolean };
+  };
+}
+
+interface LocalEngineerScopeInspection {
+  files: Map<string, string>;
+  evidenceSummary: string[];
 }
 
 function isLocalEngineerExecutionModePrompt(prompt: string): boolean {
@@ -399,6 +409,116 @@ function normalizeLocalEngineerRelativePath(relativePath: string): string {
   return relativePath.replace(/\\/g, "/").replace(/^\.\//, "").replace(/^\/+/, "");
 }
 
+function applyScopedTextReplacement(
+  content: string,
+  oldSnippet: string,
+  newSnippet: string
+): { content: string; changed: boolean } {
+  if (!content.includes(oldSnippet)) {
+    return { content, changed: false };
+  }
+  return {
+    content: content.replace(oldSnippet, newSnippet),
+    changed: true
+  };
+}
+
+function buildLocalEngineerCandidateRegistry(_scope: string[]): LocalEngineerImprovementCandidate[] {
+  return [
+    {
+      id: "LOCAL_ENGINEER_COMMAND_DECISION_TYPES_V1",
+      target: "src/agent.ts",
+      description: "Replace ambiguous pass/fail label with command decision categories",
+      evaluate(inspectedContent: string | undefined) {
+        if (!inspectedContent) {
+          return { status: "blocked", blocker: "CANDIDATE_TARGET_NOT_IN_SCOPE" };
+        }
+        const oldSnippet = "const line = `${testCommand} => ${result.exitCode === 0 ? \"pass\" : \"fail\"}`;";
+        const newSnippet = "const line = `${testCommand} => ${result.decision === \"ALLOWED_READ_ONLY\" && result.exitCode === 0 ? \"command_ok\" : result.decision === \"BLOCKED\" ? \"command_blocked\" : \"command_failed\"}`;";
+        if (inspectedContent.includes(newSnippet)) {
+          return { status: "already_applied" };
+        }
+        if (!inspectedContent.includes(oldSnippet)) {
+          return { status: "blocked", blocker: "CANDIDATE_BASELINE_NOT_FOUND" };
+        }
+        return {
+          status: "pending",
+          apply(content: string) {
+            return applyScopedTextReplacement(content, oldSnippet, newSnippet);
+          }
+        };
+      }
+    },
+    {
+      id: "LOCAL_ENGINEER_BACKLOG_STATUS_TRUTH_V1",
+      target: "src/agent.ts",
+      description: "Backlog truth should include pending only while already-applied items are closed improvements",
+      evaluate(inspectedContent: string | undefined) {
+        if (!inspectedContent) {
+          return { status: "blocked", blocker: "CANDIDATE_TARGET_NOT_IN_SCOPE" };
+        }
+        const oldSnippet = "  const discoveredBacklog = candidates.map((candidate) => candidate.description);";
+        const newSnippet = "  const discoveredBacklog = evaluations.filter((item) => item.status === \"pending\").map((item) => item.id);";
+        if (inspectedContent.includes(newSnippet)) {
+          return { status: "already_applied" };
+        }
+        if (!inspectedContent.includes(oldSnippet)) {
+          return { status: "blocked", blocker: "CANDIDATE_BASELINE_NOT_FOUND" };
+        }
+        return {
+          status: "pending",
+          apply(content: string) {
+            return applyScopedTextReplacement(content, oldSnippet, newSnippet);
+          }
+        };
+      }
+    },
+    {
+      id: "LOCAL_ENGINEER_TEST_OUTPUT_TAIL_V1",
+      target: "src/agent.ts",
+      description: "Preserve failure tail output with 1200-char bound",
+      evaluate(inspectedContent: string | undefined) {
+        if (!inspectedContent) {
+          return { status: "blocked", blocker: "CANDIDATE_TARGET_NOT_IN_SCOPE" };
+        }
+        const oldSnippet = [
+          "      const compactOutput = (result.output || \"\").replace(/\\s+/g, \" \").trim();",
+          "      if (compactOutput.length > 0) {",
+          "        failingTestOutputSnippet = truncate(compactOutput, 220);",
+          "      }"
+        ].join("\\n");
+        const newSnippet = "      failingTestOutputSnippet = buildLocalEngineerTailSnippet(result.output);";
+        if (inspectedContent.includes(newSnippet) && inspectedContent.includes("const LOCAL_ENGINEER_TEST_OUTPUT_MAX_CHARS = 1200;")) {
+          return { status: "already_applied" };
+        }
+        if (!inspectedContent.includes(oldSnippet)) {
+          return { status: "blocked", blocker: "CANDIDATE_BASELINE_NOT_FOUND" };
+        }
+        return {
+          status: "pending",
+          apply(content: string) {
+            return applyScopedTextReplacement(content, oldSnippet, newSnippet);
+          }
+        };
+      }
+    }
+  ];
+}
+
+async function inspectLocalEngineerScope(workspaceRoot: string, scope: string[]): Promise<LocalEngineerScopeInspection> {
+  const scopedFiles = await collectScopedInspectionFiles(workspaceRoot, scope);
+  const files = new Map<string, string>();
+  for (const relativeFile of scopedFiles) {
+    const absolutePath = path.join(workspaceRoot, relativeFile);
+    const content = await fs.readFile(absolutePath, "utf8");
+    files.set(relativeFile, content);
+  }
+  return {
+    files,
+    evidenceSummary: scopedFiles.map((filePath) => `scoped_file:${filePath}`)
+  };
+}
+
 async function collectScopedInspectionFiles(workspaceRoot: string, scope: string[]): Promise<string[]> {
   const files = new Set<string>();
   const visitedDirs = new Set<string>();
@@ -460,68 +580,69 @@ async function collectScopedInspectionFiles(workspaceRoot: string, scope: string
   return Array.from(files).sort((a, b) => a.localeCompare(b));
 }
 
-function buildLocalEngineerSelfImprovementCandidates(scopedFiles: string[]): LocalEngineerImprovementCandidate[] {
-  const candidates: LocalEngineerImprovementCandidate[] = [];
-  if (scopedFiles.includes("src/agent.ts")) {
-    candidates.push({
-      id: "LOCAL_ENGINEER_TEST_OUTPUT_TAIL_V1",
-      target: "src/agent.ts",
-      description: "Preserve failure-tail output snippet with 1200-char bound for LOCAL_ENGINEER test blockers",
-      apply(content: string): { content: string; changed: boolean } {
-        const oldBlock = [
-          "      const compactOutput = (result.output || \"\").replace(/\\s+/g, \" \").trim();",
-          "      if (compactOutput.length > 0) {",
-          "        failingTestOutputSnippet = truncate(compactOutput, 220);",
-          "      }"
-        ].join("\\n");
-        const newBlock = [
-          "      failingTestOutputSnippet = buildLocalEngineerTailSnippet(result.output);"
-        ].join("\\n");
-        if (!content.includes(oldBlock)) {
-          return { content, changed: false };
-        }
-        return {
-          content: content.replace(oldBlock, newBlock),
-          changed: true
-        };
-      }
-    });
-  }
-  return candidates;
-}
-
 async function applyLocalEngineerSelfImprovementV1(
   workspaceRoot: string,
   scope: string[]
 ): Promise<LocalEngineerFrontExecutionResult> {
-  const scopedFiles = await collectScopedInspectionFiles(workspaceRoot, scope);
-  const candidates = buildLocalEngineerSelfImprovementCandidates(scopedFiles);
-  const discoveredBacklog = candidates.map((candidate) => candidate.description);
-
-  for (const candidate of candidates) {
-    if (!isPathWithinLocalEngineerScope(candidate.target, scope)) {
-      continue;
-    }
-    const absoluteTarget = path.join(workspaceRoot, candidate.target);
-    const existing = await fs.readFile(absoluteTarget, "utf8");
-    const patched = candidate.apply(existing);
-    if (!patched.changed) {
-      continue;
-    }
-    await fs.writeFile(absoluteTarget, patched.content, "utf8");
+  const inspection = await inspectLocalEngineerScope(workspaceRoot, scope);
+  const candidates = buildLocalEngineerCandidateRegistry(scope);
+  const evaluations = candidates.map((candidate) => {
+    const inspectedContent = inspection.files.get(candidate.target);
+    const evaluated = candidate.evaluate(inspectedContent);
     return {
-      verdict: "CHANGES_APPLIED",
-      changedFiles: [candidate.target],
-      blockers: [],
-      discoveredBacklog
+      candidate,
+      ...evaluated
+    };
+  });
+
+  const discoveredBacklog = evaluations.filter((item) => item.status === "pending").map((item) => item.candidate.id);
+  const closedImprovements = evaluations.filter((item) => item.status === "already_applied").map((item) => item.candidate.id);
+  const blockers = evaluations
+    .filter((item) => item.status === "blocked")
+    .map((item) => `${item.candidate.id}:${item.blocker ?? "BLOCKED"}`)
+    .concat(inspection.evidenceSummary.length > 0 ? [] : ["LOCAL_ENGINEER_SCOPE_INSPECTION_EMPTY"]);
+
+  const nextPending = evaluations.find((item) => item.status === "pending" && typeof item.apply === "function");
+  if (!nextPending) {
+    return {
+      verdict: "NO_CHANGES_REQUIRED",
+      changedFiles: [],
+      blockers,
+      discoveredBacklog,
+      closedImprovements
     };
   }
 
+  if (!isPathWithinLocalEngineerScope(nextPending.candidate.target, scope)) {
+    return {
+      verdict: "BLOCKED",
+      changedFiles: [],
+      blockers: [`LOCAL_ENGINEER_SCOPE_BLOCKED_TARGET:${nextPending.candidate.target}`],
+      discoveredBacklog,
+      closedImprovements
+    };
+  }
+
+  const absoluteTarget = path.join(workspaceRoot, nextPending.candidate.target);
+  const existing = await fs.readFile(absoluteTarget, "utf8");
+  const patched = nextPending.apply!(existing);
+  if (!patched.changed || patched.content === existing) {
+    return {
+      verdict: "NO_CHANGES_REQUIRED",
+      changedFiles: [],
+      blockers: [`${nextPending.candidate.id}:LOCAL_ENGINEER_EMPTY_PATCH`],
+      discoveredBacklog,
+      closedImprovements
+    };
+  }
+
+  await fs.writeFile(absoluteTarget, patched.content, "utf8");
   return {
-    verdict: "NO_CHANGES_REQUIRED",
-    changedFiles: [],
-    blockers: [],
-    discoveredBacklog
+    verdict: "CHANGES_APPLIED",
+    changedFiles: [nextPending.candidate.target],
+    blockers,
+    discoveredBacklog: discoveredBacklog.filter((item) => item !== nextPending.candidate.id),
+    closedImprovements: closedImprovements.concat(nextPending.candidate.id)
   };
 }
 
@@ -615,7 +736,7 @@ async function runLocalEngineerExecutionMode(
   let failingTestOutputSnippet: string | undefined;
   for (const testCommand of tests) {
     const result = await runCommand(testCommand);
-    const line = `${testCommand} => ${result.exitCode === 0 ? "pass" : "fail"}`;
+    const line = `${testCommand} => ${result.decision === "ALLOWED_READ_ONLY" && result.exitCode === 0 ? "command_ok" : result.decision === "BLOCKED" ? "command_blocked" : "command_failed"}`;
     testResults.push(line);
     if (result.exitCode !== 0 || result.decision !== "ALLOWED_READ_ONLY") {
       testsPassed = false;
@@ -625,12 +746,12 @@ async function runLocalEngineerExecutionMode(
   }
 
   let commitSha = "none";
-  const blockers: string[] = [];
+  const executionBlockers: string[] = [];
   if (testsPassed && frontExecution.changedFiles.length > 0) {
     for (const changedFile of frontExecution.changedFiles) {
       const addResult = await runCommand(`git add -- ${changedFile}`);
       if (addResult.exitCode !== 0 || addResult.decision !== "ALLOWED_READ_ONLY") {
-        blockers.push(`LOCAL_ENGINEER_GIT_ADD_FAILED:${changedFile}`);
+        executionBlockers.push(`LOCAL_ENGINEER_GIT_ADD_FAILED:${changedFile}`);
         testsPassed = false;
         break;
       }
@@ -639,7 +760,7 @@ async function runLocalEngineerExecutionMode(
       const commitMessage = `LOCAL_ENGINEER_EXECUTION_MODE: ${front}`;
       const commitResult = await runCommand(`git commit -m "${commitMessage.replace(/"/g, "\\\"")}"`);
       if (commitResult.exitCode !== 0 || commitResult.decision !== "ALLOWED_READ_ONLY") {
-        blockers.push("LOCAL_ENGINEER_COMMIT_FAILED");
+        executionBlockers.push("LOCAL_ENGINEER_COMMIT_FAILED");
       } else {
         const headResult = await runCommand("git rev-parse HEAD");
         if (headResult.exitCode === 0 && headResult.decision === "ALLOWED_READ_ONLY") {
@@ -650,13 +771,15 @@ async function runLocalEngineerExecutionMode(
       }
     }
   } else if (!testsPassed) {
-    blockers.push("LOCAL_ENGINEER_TESTS_FAILED");
+    executionBlockers.push("LOCAL_ENGINEER_TESTS_FAILED");
     if (failingTestOutputSnippet) {
-      blockers.push(`LOCAL_ENGINEER_TEST_OUTPUT:${failingTestOutputSnippet}`);
+      executionBlockers.push(`LOCAL_ENGINEER_TEST_OUTPUT:${failingTestOutputSnippet}`);
     }
   }
 
-  const verdict = blockers.length > 0
+  const reportBlockers = executionBlockers.concat(frontExecution.blockers);
+
+  const verdict = executionBlockers.length > 0
     ? "LOCAL_ENGINEER_EXECUTION_BLOCKED"
     : frontExecution.changedFiles.length > 0
       ? "LOCAL_ENGINEER_EXECUTION_COMMITTED"
@@ -682,8 +805,13 @@ async function runLocalEngineerExecutionMode(
         ? frontExecution.discoveredBacklog.slice(0, 5)
         : ["none"]),
       "",
+      "### closed improvements",
+      ...(frontExecution.closedImprovements && frontExecution.closedImprovements.length > 0
+        ? frontExecution.closedImprovements.slice(0, 5)
+        : ["none"]),
+      "",
       "### blockers",
-      ...(blockers.length > 0 ? blockers : ["none"])
+      ...(reportBlockers.length > 0 ? reportBlockers : ["none"])
     ].join("\n"), config.maxTraceOutputBytes)
   };
 }

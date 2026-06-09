@@ -124,6 +124,22 @@ function createLocalEngineerRuntimeDeps(overrides?: Record<string, unknown>): Re
   };
 }
 
+async function withTempLocalEngineerWorkspace(
+  agentSource: string,
+  run: (workspaceRoot: string, agentPath: string) => Promise<void>
+): Promise<void> {
+  const tempRoot = path.join(proofWorkspaceRoot, ".local", `local-engineer-self-improve-${Date.now()}-${Math.round(Math.random() * 10000)}`);
+  const srcDir = path.join(tempRoot, "src");
+  const agentPath = path.join(srcDir, "agent.ts");
+  await fs.mkdir(srcDir, { recursive: true });
+  await fs.writeFile(agentPath, agentSource, "utf8");
+  try {
+    await run(tempRoot, agentPath);
+  } finally {
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+}
+
 function buildStructuredProofProposal(options?: {
   tsPath?: string;
   testPath?: string;
@@ -934,7 +950,7 @@ test("LOCAL_ENGINEER_EXECUTION_MODE bypasses planner", async () => {
     localEngineerPrompt({
       front: "PLANNER_SCHEMA_RELIABILITY_FOR_KNOWN_INTENTS",
       scope: "src/agent.ts",
-      tests: "npm.cmd run compile; npm.cmd test"
+      tests: "node -e \"process.exit(0)\""
     }),
     createLogger(),
     "D:\\repo",
@@ -958,7 +974,7 @@ test("LOCAL_ENGINEER_EXECUTION_MODE blocks when Front is missing", async () => {
     "model",
     localEngineerPrompt({
       scope: "src/agent.ts",
-      tests: "npm.cmd test"
+      tests: "node -e \"process.exit(0)\""
     }),
     createLogger(),
     "D:\\repo",
@@ -975,7 +991,7 @@ test("LOCAL_ENGINEER_EXECUTION_MODE blocks when Scope is missing", async () => {
     "model",
     localEngineerPrompt({
       front: "PLANNER_SCHEMA_RELIABILITY_FOR_KNOWN_INTENTS",
-      tests: "npm.cmd test"
+      tests: "node -e \"process.exit(0)\""
     }),
     createLogger(),
     "D:\\repo",
@@ -993,7 +1009,7 @@ test("LOCAL_ENGINEER_EXECUTION_MODE blocks unknown Front", async () => {
     localEngineerPrompt({
       front: "UNKNOWN_FRONT",
       scope: "src/agent.ts",
-      tests: "npm.cmd test"
+      tests: "node -e \"process.exit(0)\""
     }),
     createLogger(),
     "D:\\repo",
@@ -1011,7 +1027,7 @@ test("LOCAL_ENGINEER_EXECUTION_MODE enforces scoped edits only", async () => {
     localEngineerPrompt({
       front: "PLANNER_SCHEMA_RELIABILITY_FOR_KNOWN_INTENTS",
       scope: "src/agent.ts",
-      tests: "npm.cmd test"
+      tests: "node -e \"process.exit(0)\""
     }),
     createLogger(),
     "D:\\repo",
@@ -1172,6 +1188,323 @@ test("LOCAL_ENGINEER_SELF_IMPROVEMENT_V1 enforces scoped edits only", async () =
   assert.match(result.message ?? "", /LOCAL_ENGINEER_SCOPE_VIOLATION:src\/test\/agent.test.ts/);
 });
 
+test("LOCAL_ENGINEER_SELF_IMPROVEMENT_V1 reports tail candidate as closed not backlog", async () => {
+  const source = [
+    "const LOCAL_ENGINEER_TEST_OUTPUT_MAX_CHARS = 1200;",
+    "function demo() {",
+    "  const discoveredBacklog = evaluations.filter((item) => item.status === \"pending\").map((item) => item.id);",
+    "  const line = `${testCommand} => ${result.decision === \"ALLOWED_READ_ONLY\" && result.exitCode === 0 ? \"command_ok\" : result.decision === \"BLOCKED\" ? \"command_blocked\" : \"command_failed\"}`;",
+    "      failingTestOutputSnippet = buildLocalEngineerTailSnippet(result.output);",
+    "  return { discoveredBacklog, line, failingTestOutputSnippet };",
+    "}"
+  ].join("\n");
+
+  await withTempLocalEngineerWorkspace(source, async (workspaceRoot) => {
+    const deps = {
+      runModel: async () => "{\"intent\":\"agent_task\",}",
+      collectBaseline: async () => ({
+        branch: "main",
+        head: "abc123",
+        statusPorcelain: "",
+        clean: true,
+        toolsUsed: []
+      }),
+      gitStatus: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+      gitDiff: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+      gitDiffForPath: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+      listDirectory: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+      readFile: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+      textSearch: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+      runLocalEngineerCommand: async (_workspace: string, command: string) => ({
+        decision: "ALLOWED_READ_ONLY",
+        output: command === "git rev-parse HEAD" ? "selfimprove123" : "ok",
+        command,
+        cwd: workspaceRoot,
+        truncated: false,
+        exitCode: 0
+      })
+    };
+    const result = await runBoundedAgent(
+      baseConfig,
+      "model",
+      localEngineerPrompt({
+        front: "LOCAL_ENGINEER_SELF_IMPROVEMENT_V1",
+        scope: "src/agent.ts",
+        tests: "node -e \"process.exit(0)\""
+      }),
+      createLogger(),
+      workspaceRoot,
+      deps as never
+    );
+
+    assert.equal(result.action, "final");
+    assert.match(result.message ?? "", /### closed improvements[\s\S]*LOCAL_ENGINEER_TEST_OUTPUT_TAIL_V1/);
+    assert.match(result.message ?? "", /### discovered backlog\nnone/);
+  });
+});
+
+test("LOCAL_ENGINEER_SELF_IMPROVEMENT_V1 keeps BACKLOG_STATUS_TRUTH pending before applied", async () => {
+  const source = [
+    "function demo() {",
+    "  const discoveredBacklog = candidates.map((candidate) => candidate.description);",
+    "  const line = `${testCommand} => ${result.exitCode === 0 ? \"pass\" : \"fail\"}`;",
+    "      failingTestOutputSnippet = buildLocalEngineerTailSnippet(result.output);",
+    "  return { discoveredBacklog, line, failingTestOutputSnippet };",
+    "}"
+  ].join("\n");
+
+  await withTempLocalEngineerWorkspace(source, async (workspaceRoot) => {
+    const deps = {
+      runModel: async () => "{\"intent\":\"agent_task\",}",
+      collectBaseline: async () => ({
+        branch: "main",
+        head: "abc123",
+        statusPorcelain: "",
+        clean: true,
+        toolsUsed: []
+      }),
+      gitStatus: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+      gitDiff: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+      gitDiffForPath: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+      listDirectory: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+      readFile: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+      textSearch: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+      runLocalEngineerCommand: async (_workspace: string, command: string) => ({
+        decision: "ALLOWED_READ_ONLY",
+        output: command === "git rev-parse HEAD" ? "selfimprove124" : "ok",
+        command,
+        cwd: workspaceRoot,
+        truncated: false,
+        exitCode: 0
+      })
+    };
+    const result = await runBoundedAgent(
+      baseConfig,
+      "model",
+      localEngineerPrompt({
+        front: "LOCAL_ENGINEER_SELF_IMPROVEMENT_V1",
+        scope: "src/agent.ts",
+        tests: "node -e \"process.exit(0)\""
+      }),
+      createLogger(),
+      workspaceRoot,
+      deps as never
+    );
+
+    assert.equal(result.action, "final");
+    assert.match(result.message ?? "", /### discovered backlog[\s\S]*LOCAL_ENGINEER_BACKLOG_STATUS_TRUTH_V1/);
+  });
+});
+
+test("LOCAL_ENGINEER_SELF_IMPROVEMENT_V1 applies exactly one pending candidate per run", async () => {
+  const source = [
+    "function demo() {",
+    "  const discoveredBacklog = candidates.map((candidate) => candidate.description);",
+    "  const line = `${testCommand} => ${result.exitCode === 0 ? \"pass\" : \"fail\"}`;",
+    "      failingTestOutputSnippet = buildLocalEngineerTailSnippet(result.output);",
+    "  return { discoveredBacklog, line, failingTestOutputSnippet };",
+    "}"
+  ].join("\n");
+
+  await withTempLocalEngineerWorkspace(source, async (workspaceRoot, agentPath) => {
+    const deps = {
+      runModel: async () => "{\"intent\":\"agent_task\",}",
+      collectBaseline: async () => ({
+        branch: "main",
+        head: "abc123",
+        statusPorcelain: "",
+        clean: true,
+        toolsUsed: []
+      }),
+      gitStatus: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+      gitDiff: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+      gitDiffForPath: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+      listDirectory: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+      readFile: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+      textSearch: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+      runLocalEngineerCommand: async (_workspace: string, command: string) => ({
+        decision: "ALLOWED_READ_ONLY",
+        output: command === "git rev-parse HEAD" ? "selfimprove125" : "ok",
+        command,
+        cwd: workspaceRoot,
+        truncated: false,
+        exitCode: 0
+      })
+    };
+    const result = await runBoundedAgent(
+      baseConfig,
+      "model",
+      localEngineerPrompt({
+        front: "LOCAL_ENGINEER_SELF_IMPROVEMENT_V1",
+        scope: "src/agent.ts",
+        tests: "node -e \"process.exit(0)\""
+      }),
+      createLogger(),
+      workspaceRoot,
+      deps as never
+    );
+
+    const updated = await fs.readFile(agentPath, "utf8");
+    const commandLabelApplied = updated.includes("command_ok") && updated.includes("command_blocked") && updated.includes("command_failed");
+    const backlogLegacyStillPresent = updated.includes("const discoveredBacklog = candidates.map((candidate) => candidate.description);");
+
+    assert.equal(result.action, "final");
+    assert.equal(commandLabelApplied, true);
+    assert.equal(backlogLegacyStillPresent, true);
+    assert.match(result.message ?? "", /### files\nsrc\/agent.ts/);
+  });
+});
+
+test("LOCAL_ENGINEER_SELF_IMPROVEMENT_V1 no pending returns no changes and skips commit", async () => {
+  const source = [
+    "const LOCAL_ENGINEER_TEST_OUTPUT_MAX_CHARS = 1200;",
+    "function demo() {",
+    "  const discoveredBacklog = evaluations.filter((item) => item.status === \"pending\").map((item) => item.id);",
+    "  const line = `${testCommand} => ${result.decision === \"ALLOWED_READ_ONLY\" && result.exitCode === 0 ? \"command_ok\" : result.decision === \"BLOCKED\" ? \"command_blocked\" : \"command_failed\"}`;",
+    "      failingTestOutputSnippet = buildLocalEngineerTailSnippet(result.output);",
+    "  return { discoveredBacklog, line, failingTestOutputSnippet };",
+    "}"
+  ].join("\n");
+
+  let commitAttempted = false;
+  await withTempLocalEngineerWorkspace(source, async (workspaceRoot) => {
+    const result = await runBoundedAgent(
+      baseConfig,
+      "model",
+      localEngineerPrompt({
+        front: "LOCAL_ENGINEER_SELF_IMPROVEMENT_V1",
+        scope: "src/agent.ts",
+        tests: "node -e \"process.exit(0)\""
+      }),
+      createLogger(),
+      workspaceRoot,
+      createLocalEngineerRuntimeDeps({
+        runLocalEngineerCommand: async (_workspace: string, command: string) => {
+          if (command.startsWith("git commit")) {
+            commitAttempted = true;
+          }
+          return {
+            decision: "ALLOWED_READ_ONLY",
+            output: command === "git rev-parse HEAD" ? "selfimprove126" : "ok",
+            command,
+            cwd: workspaceRoot,
+            truncated: false,
+            exitCode: 0
+          };
+        }
+      }) as never
+    );
+
+    assert.equal(result.action, "final");
+    assert.match(result.message ?? "", /LOCAL_ENGINEER_EXECUTION_NO_CHANGES/);
+    assert.match(result.message ?? "", /### files\nnone/);
+    assert.equal(commitAttempted, false);
+  });
+});
+
+test("LOCAL_ENGINEER_SELF_IMPROVEMENT_V1 failed validation uses tail output and blocks commit", async () => {
+  const source = [
+    "function demo() {",
+    "  const discoveredBacklog = candidates.map((candidate) => candidate.description);",
+    "  const line = `${testCommand} => ${result.exitCode === 0 ? \"pass\" : \"fail\"}`;",
+    "      failingTestOutputSnippet = buildLocalEngineerTailSnippet(result.output);",
+    "  return { discoveredBacklog, line, failingTestOutputSnippet };",
+    "}"
+  ].join("\n");
+
+  let commitAttempted = false;
+  await withTempLocalEngineerWorkspace(source, async (workspaceRoot) => {
+    const result = await runBoundedAgent(
+      baseConfig,
+      "model",
+      localEngineerPrompt({
+        front: "LOCAL_ENGINEER_SELF_IMPROVEMENT_V1",
+        scope: "src/agent.ts",
+        tests: "node --test out/test/agent.test.js"
+      }),
+      createLogger(),
+      workspaceRoot,
+      createLocalEngineerRuntimeDeps({
+        runLocalEngineerCommand: async (_workspace: string, command: string) => {
+          if (command.startsWith("git commit")) {
+            commitAttempted = true;
+          }
+          if (command === "node --test out/test/agent.test.js") {
+            return {
+              decision: "BLOCKED",
+              output: `${"noise ".repeat(500)}\nSELF_IMPROVEMENT_ASSERTION_TAIL`,
+              command,
+              cwd: workspaceRoot,
+              truncated: false,
+              exitCode: 1
+            };
+          }
+          return {
+            decision: "ALLOWED_READ_ONLY",
+            output: "ok",
+            command,
+            cwd: workspaceRoot,
+            truncated: false,
+            exitCode: 0
+          };
+        }
+      }) as never
+    );
+
+    assert.equal(result.action, "final");
+    assert.equal(commitAttempted, false);
+    assert.match(result.message ?? "", /LOCAL_ENGINEER_TESTS_FAILED/);
+    assert.match(result.message ?? "", /LOCAL_ENGINEER_TEST_OUTPUT:[\s\S]*SELF_IMPROVEMENT_ASSERTION_TAIL/);
+  });
+});
+
+test("LOCAL_ENGINEER_EXECUTION_MODE command denylist blocks docker curl wget Invoke-WebRequest http https install and git push", async () => {
+  const deps = {
+    runModel: async () => "{\"intent\":\"agent_task\",}",
+    collectBaseline: async () => ({
+      branch: "main",
+      head: "abc123",
+      statusPorcelain: "",
+      clean: true,
+      toolsUsed: []
+    }),
+    gitStatus: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+    gitDiff: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+    gitDiffForPath: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+    listDirectory: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+    readFile: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+    textSearch: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+    executeLocalEngineerFront: async () => ({ verdict: "NO_CHANGES_REQUIRED", changedFiles: [], blockers: [] })
+  };
+  const blockedCommands = [
+    "docker ps",
+    "curl https://example.com",
+    "wget http://example.com",
+    "Invoke-WebRequest https://example.com",
+    "npm install lodash",
+    "git push origin main"
+  ];
+
+  for (const blockedCommand of blockedCommands) {
+    const result = await runBoundedAgent(
+      baseConfig,
+      "model",
+      localEngineerPrompt({
+        front: "LOCAL_ENGINEER_SELF_IMPROVEMENT_V1",
+        scope: "src/agent.ts",
+        tests: blockedCommand
+      }),
+      createLogger(),
+      "D:\\repo",
+      deps as never
+    );
+
+    assert.equal(result.action, "final");
+    assert.match(result.message ?? "", /LOCAL_ENGINEER_TESTS_FAILED/);
+    assert.match(result.message ?? "", /LOCAL_ENGINEER_COMMAND_BLOCKED/);
+  }
+});
+
 test("LOCAL_ENGINEER_EXECUTION_MODE commits when tests pass", async () => {
   const result = await runBoundedAgent(
     baseConfig,
@@ -1179,7 +1512,7 @@ test("LOCAL_ENGINEER_EXECUTION_MODE commits when tests pass", async () => {
     localEngineerPrompt({
       front: "PLANNER_SCHEMA_RELIABILITY_FOR_KNOWN_INTENTS",
       scope: "src/agent.ts",
-      tests: "npm.cmd run compile; npm.cmd test"
+      tests: "node -e \"process.exit(0)\""
     }),
     createLogger(),
     "D:\\repo",
