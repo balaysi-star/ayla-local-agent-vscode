@@ -457,7 +457,7 @@ function buildLocalEngineerCandidateRegistry(_scope: string[]): LocalEngineerImp
         if (!inspectedContent) {
           return { status: "blocked", blocker: "CANDIDATE_TARGET_NOT_IN_SCOPE" };
         }
-        const oldSnippet = "  const discoveredBacklog = candidates.map((candidate) => candidate.description);";
+        const oldSnippet = "  const discoveredBacklog = evaluations.filter((item) => item.status === "pending").map((item) => item.id);";
         const newSnippet = "  const discoveredBacklog = evaluations.filter((item) => item.status === \"pending\").map((item) => item.id);";
         if (inspectedContent.includes(newSnippet)) {
           return { status: "already_applied" };
