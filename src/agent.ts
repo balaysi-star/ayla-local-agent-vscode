@@ -454,12 +454,17 @@ async function runLocalEngineerExecutionMode(
 
   const testResults: string[] = [];
   let testsPassed = true;
+  let failingTestOutputSnippet: string | undefined;
   for (const testCommand of tests) {
     const result = await runCommand(testCommand);
     const line = `${testCommand} => ${result.exitCode === 0 ? "pass" : "fail"}`;
     testResults.push(line);
     if (result.exitCode !== 0 || result.decision !== "ALLOWED_READ_ONLY") {
       testsPassed = false;
+      const compactOutput = (result.output || "").replace(/\s+/g, " ").trim();
+      if (compactOutput.length > 0) {
+        failingTestOutputSnippet = truncate(compactOutput, 220);
+      }
       break;
     }
   }
@@ -491,6 +496,9 @@ async function runLocalEngineerExecutionMode(
     }
   } else if (!testsPassed) {
     blockers.push("LOCAL_ENGINEER_TESTS_FAILED");
+    if (failingTestOutputSnippet) {
+      blockers.push(`LOCAL_ENGINEER_TEST_OUTPUT:${failingTestOutputSnippet}`);
+    }
   }
 
   const verdict = blockers.length > 0

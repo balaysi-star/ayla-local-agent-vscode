@@ -1077,6 +1077,7 @@ test("LOCAL_ENGINEER_EXECUTION_MODE blocks commit when tests fail", async () => 
   assert.equal(result.action, "final");
   assert.match(result.message ?? "", /LOCAL_ENGINEER_EXECUTION_BLOCKED/);
   assert.match(result.message ?? "", /LOCAL_ENGINEER_TESTS_FAILED/);
+  assert.match(result.message ?? "", /LOCAL_ENGINEER_TEST_OUTPUT:tests failed/);
   assert.match(result.message ?? "", /### commit\nnone/);
 });
 
