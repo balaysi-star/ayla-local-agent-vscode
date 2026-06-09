@@ -6620,13 +6620,37 @@ function isRevertProposalOnlyIntent(prompt: string): boolean {
     && /\bdo not edit files\b/.test(normalized);
 }
 
+function hasNegatedApplyIntent(prompt: string): boolean {
+  const normalized = prompt.toLowerCase();
+  const directNegations = [
+    /\bdo not apply\b/,
+    /\bdo not use\s*\/apply\b/,
+    /\bnever apply\b/,
+    /\bwithout apply(?:ing)?\b/,
+    /\bdo not modify files?\b/,
+    /\bdo not create patches?\b/,
+    /\bdo not edit files?\b/
+  ].some((pattern) => pattern.test(normalized));
+  if (directNegations) {
+    return true;
+  }
+  return ["apply", "applying", "patch", "/apply"].some((phrase) => isNegatedUnsafePhrase(normalized, phrase));
+}
+
 function isPatchApplyIntent(prompt: string): boolean {
   const normalized = prompt.toLowerCase();
-  return /\bpatch\b/.test(normalized) && (/\bapply\b/.test(normalized) || /\bapplying\b/.test(normalized) || isExplicitPatchApproval(prompt));
+  if (hasNegatedApplyIntent(prompt)) {
+    return false;
+  }
+  return (/\bpatch\b/.test(normalized) || /\b\/apply\b/.test(normalized))
+    && (/\bapply\b/.test(normalized) || /\bapplying\b/.test(normalized) || isExplicitPatchApproval(prompt));
 }
 
 function isRevertApplyIntent(prompt: string): boolean {
   const normalized = prompt.toLowerCase();
+  if (hasNegatedApplyIntent(prompt)) {
+    return false;
+  }
   return /\brevert\b/.test(normalized) && (/\bapply\b/.test(normalized) || /\bapplying\b/.test(normalized) || isExplicitRevertApproval(prompt));
 }
 

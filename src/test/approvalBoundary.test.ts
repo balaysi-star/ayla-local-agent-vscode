@@ -154,6 +154,63 @@ test("apply request without approval returns approval required", async () => {
   assert.equal(await fs.readFile(fixturePath, "utf8"), "before approval boundary test");
 });
 
+test("negated read-only audit prompt does not trigger approval apply path", async () => {
+  const { workspaceRoot } = await createWorkspace();
+  const patchSession = createPatchSession(workspaceRoot);
+
+  const result = await runBoundedAgent(
+    config,
+    "model",
+    "/agent READ_ONLY_REPO_AUDIT_ONLY. Do not apply patches. Do not use /apply. Do not modify files. Do not commit. Do not create patches. Inspect package.json, src/router.ts, src/agent.ts, src/skills.ts, src/tools.ts. Return FACTS, WEAKNESSES, ENGINEERING_BACKLOG, FIRST_READ_ONLY_VERIFICATION, UNKNOWN.",
+    createLogger(),
+    workspaceRoot,
+    createRuntimeDeps(workspaceRoot),
+    { patchSession }
+  );
+
+  assert.equal(result.action, "blocked");
+  assert.match(result.message ?? "", /PLANNER_SCHEMA_INVALID/);
+  assert.doesNotMatch(result.message ?? "", /NO_PENDING_PATCH/);
+  assert.doesNotMatch(result.message ?? "", /Approval Boundary/);
+});
+
+test("positive apply phrase with no pending patch still returns no pending patch", async () => {
+  const { workspaceRoot } = await createWorkspace();
+  const patchSession = createPatchSession(workspaceRoot);
+
+  const result = await runBoundedAgent(
+    config,
+    "model",
+    "apply the patch",
+    createLogger(),
+    workspaceRoot,
+    createRuntimeDeps(workspaceRoot),
+    { patchSession }
+  );
+
+  assert.equal(result.action, "blocked");
+  assert.match(result.message ?? "", /NO_PENDING_PATCH/);
+});
+
+test("do not apply patches is treated as non-apply intent", async () => {
+  const { workspaceRoot } = await createWorkspace();
+  const patchSession = createPatchSession(workspaceRoot);
+
+  const result = await runBoundedAgent(
+    config,
+    "model",
+    "Do not apply patches. This is a read-only audit request.",
+    createLogger(),
+    workspaceRoot,
+    createRuntimeDeps(workspaceRoot),
+    { patchSession }
+  );
+
+  assert.equal(result.action, "blocked");
+  assert.match(result.message ?? "", /PLANNER_SCHEMA_INVALID/);
+  assert.doesNotMatch(result.message ?? "", /NO_PENDING_PATCH/);
+});
+
 test("explicit approval applies only the exact pending patch and is single-use", async () => {
   const { workspaceRoot, fixturePath, relativeFixturePath } = await createWorkspace();
   const patchSession = createPatchSession(workspaceRoot);
