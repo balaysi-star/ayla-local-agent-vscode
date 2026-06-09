@@ -159,6 +159,28 @@ function classifyConnectionError(error: unknown): never {
   throw new Error("OLLAMA_UNAVAILABLE");
 }
 
+function extractStreamPiece(payload: {
+  message?: { content?: unknown; thinking?: unknown };
+  response?: unknown;
+  content?: unknown;
+  thinking?: unknown;
+}): string {
+  const value = payload.message?.content
+    ?? payload.response
+    ?? payload.content
+    ?? payload.message?.thinking
+    ?? payload.thinking
+    ?? "";
+  return typeof value === "string" ? value : "";
+}
+
+function markFirstStreamPayload(diagnostics: OllamaStreamDiagnostics): void {
+  if (!diagnostics.firstTokenReceived) {
+    diagnostics.firstTokenReceived = true;
+    diagnostics.lifecycle.firstToken = true;
+  }
+}
+
 export class OllamaClient {
   private readonly baseUrl: string;
   private readonly timeoutMs: number;
@@ -262,7 +284,8 @@ export class OllamaClient {
       if (signal.aborted) {
         diagnostics.cancelled = true;
         diagnostics.streamCancelledByRuntime = true;
-        diagnostics.lifecycle.interruptedReason = "CANCELLED";
+        diagnostics.timeout = signal.reason instanceof Error && signal.reason.message === "OLLAMA_TIMEOUT";
+        diagnostics.lifecycle.interruptedReason = diagnostics.timeout ? "OLLAMA_TIMEOUT" : "CANCELLED";
         throw createStreamError("OLLAMA_STREAM_CANCELLED", diagnostics);
       }
       diagnostics.nestedError = error instanceof Error ? error.message : "unknown";
@@ -306,7 +329,12 @@ export class OllamaClient {
         }
         diagnostics.cancelled = true;
         diagnostics.streamCancelledByRuntime = true;
-        diagnostics.lifecycle.interruptedReason = "CANCELLED";
+        diagnostics.timeout = signal.reason instanceof Error && signal.reason.message === "OLLAMA_TIMEOUT";
+        diagnostics.lifecycle.interruptedReason = diagnostics.timeout ? "OLLAMA_TIMEOUT" : "CANCELLED";
+        if (collected.trim().length > 0) {
+          diagnostics.lifecycle.completed = false;
+          return { content: collected, diagnostics };
+        }
         throw createStreamError("OLLAMA_STREAM_CANCELLED", diagnostics);
       }
 
@@ -315,7 +343,12 @@ export class OllamaClient {
         chunk = await reader.read();
       } catch (error) {
         diagnostics.nestedError = error instanceof Error ? error.message : "reader_read_failed";
-        diagnostics.lifecycle.interruptedReason = "READER_READ_FAILED";
+        diagnostics.timeout = diagnostics.nestedError === "OLLAMA_TIMEOUT";
+        diagnostics.lifecycle.interruptedReason = diagnostics.timeout ? "OLLAMA_TIMEOUT" : "READER_READ_FAILED";
+        if (collected.trim().length > 0) {
+          diagnostics.lifecycle.completed = false;
+          return { content: collected, diagnostics };
+        }
         throw createStreamError("OLLAMA_STREAM_INTERRUPTED", diagnostics);
       }
 
@@ -334,17 +367,16 @@ export class OllamaClient {
         if (line.length > 0) {
           try {
             const payload = JSON.parse(line) as {
-              message?: { content?: string };
-              response?: string;
+              message?: { content?: unknown; thinking?: unknown };
+              response?: unknown;
+              content?: unknown;
+              thinking?: unknown;
               done?: boolean;
             };
             diagnostics.lastParsedJsonLine = line.slice(0, 500);
-            const piece = payload.message?.content ?? payload.response ?? "";
+            markFirstStreamPayload(diagnostics);
+            const piece = extractStreamPiece(payload);
             if (piece) {
-              if (!diagnostics.firstTokenReceived) {
-                diagnostics.firstTokenReceived = true;
-                diagnostics.lifecycle.firstToken = true;
-              }
               collected += piece;
               options.onToken?.(piece);
             }
@@ -356,6 +388,10 @@ export class OllamaClient {
             diagnostics.parserError = error instanceof Error ? error.message : "JSON_PARSE_FAILED";
             diagnostics.lastParsedJsonLine = line.slice(0, 500);
             diagnostics.lifecycle.interruptedReason = "JSON_PARSE_FAILED";
+            if (collected.trim().length > 0) {
+              diagnostics.lifecycle.completed = false;
+              return { content: collected, diagnostics };
+            }
             throw createStreamError("OLLAMA_STREAM_INTERRUPTED", diagnostics);
           }
         }
@@ -396,32 +432,37 @@ export class OllamaClient {
       diagnostics.httpStatus = response.status;
       if (!response.ok) {
         diagnostics.lifecycle.interruptedReason = `HTTP_${response.status}`;
+        const errorText = await response.text().catch(() => "");
+        diagnostics.nestedError = errorText.slice(0, 500) || diagnostics.nestedError;
         if (response.status === 404 || response.status === 400) {
           throw createStreamError("MODEL_NOT_FOUND", diagnostics);
         }
         throw createStreamError("OLLAMA_UNAVAILABLE", diagnostics);
       }
-      const payload = await response.json() as { message?: { content?: string }; response?: string };
-      const content = payload.message?.content ?? payload.response ?? "";
-      if (!content.trim()) {
+      const payload = await response.json() as {
+        message?: { content?: unknown; thinking?: unknown };
+        response?: unknown;
+        content?: unknown;
+        thinking?: unknown;
+      };
+      diagnostics.lifecycle.connected = true;
+      diagnostics.lifecycle.completed = true;
+      const content = extractStreamPiece(payload).trim();
+      if (content.length === 0) {
         diagnostics.lifecycle.interruptedReason = "EMPTY_CONTENT";
         throw createStreamError("MODEL_RESPONSE_INVALID: EMPTY_CONTENT", diagnostics);
       }
       diagnostics.firstTokenReceived = true;
       diagnostics.lifecycle.firstToken = true;
-      diagnostics.lifecycle.completed = true;
       return { content, diagnostics };
     } catch (error) {
-      if (error instanceof Error && error.message === "OLLAMA_STREAM_CANCELLED") {
-        diagnostics.cancelled = true;
-        diagnostics.streamCancelledByRuntime = true;
-      }
-      if ((error as { diagnostics?: OllamaStreamDiagnostics }).diagnostics) {
+      if (getStreamDiagnostics(error)) {
         throw error;
       }
-      diagnostics.nestedError = error instanceof Error ? error.message : "non_stream_failed";
-      diagnostics.lifecycle.interruptedReason = diagnostics.cancelled ? "CANCELLED" : "NON_STREAM_FAILED";
-      throw createStreamError(diagnostics.cancelled ? "OLLAMA_STREAM_CANCELLED" : "OLLAMA_UNAVAILABLE", diagnostics);
+      diagnostics.nestedError = error instanceof Error ? error.message : "unknown";
+      diagnostics.timeout = diagnostics.nestedError === "OLLAMA_TIMEOUT";
+      diagnostics.lifecycle.interruptedReason = diagnostics.timeout ? "OLLAMA_TIMEOUT" : "NON_STREAM_FAILED";
+      throw createStreamError("OLLAMA_STREAM_INTERRUPTED", diagnostics);
     }
   }
 }
