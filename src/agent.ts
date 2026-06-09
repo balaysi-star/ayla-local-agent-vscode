@@ -1,4 +1,4 @@
-import * as crypto from "crypto";
+﻿import * as crypto from "crypto";
 import * as cp from "child_process";
 import * as fs from "fs/promises";
 import * as path from "path";
@@ -457,18 +457,18 @@ function buildLocalEngineerCandidateRegistry(_scope: string[]): LocalEngineerImp
         if (!inspectedContent) {
           return { status: "blocked", blocker: "CANDIDATE_TARGET_NOT_IN_SCOPE" };
         }
-        const oldSnippet = "  const discoveredBacklog = evaluations.filter((item) => item.status === \"pending\").map((item) => item.id);";
-        const newSnippet = "  const discoveredBacklog = evaluations.filter((item) => item.status === \"pending\").map((item) => item.id);";
-        if (inspectedContent.includes(newSnippet)) {
+        const legacySnippet = '  const discoveredBacklog = evaluations.filter((item) => item.status === "pending").map((item) => item.id);';
+        const currentSnippet = '  const discoveredBacklog = evaluations.filter((item) => item.status === "pending").map((item) => item.candidate.id);';
+        if (inspectedContent.includes(currentSnippet)) {
           return { status: "already_applied" };
         }
-        if (!inspectedContent.includes(oldSnippet)) {
+        if (!inspectedContent.includes(legacySnippet)) {
           return { status: "blocked", blocker: "CANDIDATE_BASELINE_NOT_FOUND" };
         }
         return {
           status: "pending",
           apply(content: string) {
-            return applyScopedTextReplacement(content, oldSnippet, newSnippet);
+            return applyScopedTextReplacement(content, legacySnippet, currentSnippet);
           }
         };
       }
@@ -9449,3 +9449,4 @@ export async function runBoundedAgent(
   }
   return buildEvidenceBackedFinal(planner.summary, observations, config, selectedSkill);
 }
+
