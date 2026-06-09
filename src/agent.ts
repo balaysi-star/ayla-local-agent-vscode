@@ -738,6 +738,12 @@ async function runLocalEngineerExecutionMode(
     const result = await runCommand(testCommand);
     const line = `${testCommand} => ${result.decision === "ALLOWED_READ_ONLY" && result.exitCode === 0 ? "command_ok" : result.decision === "BLOCKED" ? "command_blocked" : "command_failed"}`;
     testResults.push(line);
+    const successOutputSnippet = result.decision === "ALLOWED_READ_ONLY" && result.exitCode === 0
+      ? buildLocalEngineerTailSnippet(result.output)
+      : undefined;
+    if (successOutputSnippet) {
+      testResults.push(`output: ${successOutputSnippet}`);
+    }
     if (result.exitCode !== 0 || result.decision !== "ALLOWED_READ_ONLY") {
       testsPassed = false;
       failingTestOutputSnippet = buildLocalEngineerTailSnippet(result.output);
