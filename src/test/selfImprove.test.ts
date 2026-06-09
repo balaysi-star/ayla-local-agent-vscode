@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { AgentConfig } from "../config";
-import { buildSelfImproveStatusReport, isSelfImprovementPrompt } from "../selfImprove";
+import { buildSelfImproveStatusReport, collectSelfImproveWorkspaceStatusRuntimeProof, isSelfImprovementPrompt } from "../selfImprove";
 import { SessionStore } from "../state";
 
 function createConfig(overrides?: Partial<AgentConfig>): AgentConfig {
@@ -92,4 +92,58 @@ test("self-improvement prompt detector is deterministic", () => {
   assert.equal(isSelfImprovementPrompt("start a self-improvement cycle"), true);
   assert.equal(isSelfImprovementPrompt("bootstrap self repair loop"), true);
   assert.equal(isSelfImprovementPrompt("check git status"), false);
+});
+
+test("runtime proof collector captures all required evidence when sources are available", async () => {
+  const proof = await collectSelfImproveWorkspaceStatusRuntimeProof(
+    "D:/repo",
+    createConfig(),
+    {
+      collectBaseline: async () => ({
+        branch: "main",
+        head: "abc123",
+        statusPorcelain: "",
+        clean: true
+      }),
+      readFile: async () => ({ decision: "ALLOWED_READ_ONLY", output: JSON.stringify({ version: "0.0.58" }) }),
+      fetchJson: async () => ({ status: "ok", selectedModel: "ayla-local-coder:latest", cloudFallbackUsed: false })
+    }
+  );
+
+  assert.equal(proof.branchCaptured, true);
+  assert.equal(proof.headCaptured, true);
+  assert.equal(proof.cleanDirtyCaptured, true);
+  assert.equal(proof.packageVersionCaptured, true);
+  assert.equal(proof.gatewayHealthCaptured, true);
+  assert.equal(proof.selectedModelCaptured, true);
+  assert.equal(proof.cloudFallbackCaptured, true);
+  assert.deepEqual(proof.missingFields, []);
+});
+
+test("runtime proof collector records explicit gateway missing fields when gateway is unreachable", async () => {
+  const proof = await collectSelfImproveWorkspaceStatusRuntimeProof(
+    "D:/repo",
+    createConfig(),
+    {
+      collectBaseline: async () => ({
+        branch: "main",
+        head: "abc123",
+        statusPorcelain: "",
+        clean: true
+      }),
+      readFile: async () => ({ decision: "ALLOWED_READ_ONLY", output: JSON.stringify({ version: "0.0.58" }) }),
+      fetchJson: async () => {
+        throw new Error("ECONNREFUSED");
+      }
+    }
+  );
+
+  assert.equal(proof.branchCaptured, true);
+  assert.equal(proof.headCaptured, true);
+  assert.equal(proof.cleanDirtyCaptured, true);
+  assert.equal(proof.packageVersionCaptured, true);
+  assert.equal(proof.gatewayHealthCaptured, false);
+  assert.ok((proof.missingFields ?? []).includes("gateway_health"));
+  assert.ok((proof.missingFields ?? []).includes("selectedModel_or_UNKNOWN_NOT_EXPOSED"));
+  assert.ok((proof.missingFields ?? []).includes("cloud_fallback_or_UNKNOWN_NOT_EXPOSED"));
 });

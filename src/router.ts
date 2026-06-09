@@ -6,7 +6,7 @@ import { Logger } from "./logging";
 import { formatStructuredResult } from "./markdown";
 import { discoverModels, runChat } from "./ollama";
 import { applyPendingPatch, summarizePatch } from "./patch";
-import { buildSelfImproveStatusReport, isSelfImprovementPrompt, STATIC_SLASH_COMMANDS, SelfImproveBootstrapMetadata } from "./selfImprove";
+import { buildSelfImproveStatusReport, collectSelfImproveWorkspaceStatusRuntimeProof, isSelfImprovementPrompt, STATIC_SLASH_COMMANDS, SelfImproveBootstrapMetadata, WorkspaceStatusRuntimeProof } from "./selfImprove";
 import { SessionStore } from "./state";
 import { PendingPatch, StructuredResult } from "./types";
 import { gitDiffTool, readFileTool, textSearchTool, validateTool } from "./tools";
@@ -18,6 +18,7 @@ interface RouterDeps {
   statusBar: vscode.StatusBarItem;
   onProgress?: (message: string) => void;
   bootstrapMetadata?: SelfImproveBootstrapMetadata;
+  selfImproveProofCollector?: (workspaceRoot: string, config: AgentConfig) => Promise<WorkspaceStatusRuntimeProof>;
 }
 
 interface RequestContext {
@@ -161,7 +162,16 @@ export async function handleCommand(
         if (mode !== "status") {
           return buildResult("Self Improve", ["Usage: /self-improve status"]);
         }
-        return buildSelfImproveStatusReport(deps.config, deps.sessions, request.sessionId, request.workspaceRoot, deps.bootstrapMetadata);
+        const runtimeProof = request.workspaceRoot
+          ? await (deps.selfImproveProofCollector
+            ? deps.selfImproveProofCollector(request.workspaceRoot, deps.config)
+            : collectSelfImproveWorkspaceStatusRuntimeProof(request.workspaceRoot, deps.config))
+          : undefined;
+        const metadata: SelfImproveBootstrapMetadata = {
+          ...(deps.bootstrapMetadata ?? {}),
+          workspaceStatusRuntimeProof: runtimeProof
+        };
+        return buildSelfImproveStatusReport(deps.config, deps.sessions, request.sessionId, request.workspaceRoot, metadata);
       }
       case "diff": {
         const result = await gitDiffTool(ctx);

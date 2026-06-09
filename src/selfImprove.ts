@@ -1,6 +1,7 @@
 import { AgentConfig } from "./config";
 import { getSkillDefinition, getSkillRegistry } from "./skills";
 import { SessionStore } from "./state";
+import { collectGitBaselineTool, readFileTool, ToolContext } from "./tools";
 
 export const STATIC_SLASH_COMMANDS = [
   "ping",
@@ -52,6 +53,128 @@ export interface SelfImproveBootstrapMetadata {
     cloudFallbackCaptured?: boolean;
     missingFields?: string[];
   };
+}
+
+export interface WorkspaceStatusRuntimeProof {
+  branchCaptured?: boolean;
+  headCaptured?: boolean;
+  cleanDirtyCaptured?: boolean;
+  packageVersionCaptured?: boolean;
+  gatewayHealthCaptured?: boolean;
+  selectedModelCaptured?: boolean;
+  cloudFallbackCaptured?: boolean;
+  missingFields?: string[];
+}
+
+interface SelfImproveProofCollectorDeps {
+  collectBaseline(ctx: ToolContext): Promise<{ branch: string; head: string; statusPorcelain: string; clean: boolean }>;
+  readFile(ctx: ToolContext, relativePath: string): Promise<{ decision: string; output: string }>;
+  fetchJson(url: string): Promise<unknown>;
+}
+
+function parsePackageVersion(output: string): boolean {
+  try {
+    const parsed = JSON.parse(output) as { version?: unknown };
+    return typeof parsed.version === "string" && parsed.version.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
+async function fetchGatewayHealth(baseUrl: string, deps: SelfImproveProofCollectorDeps): Promise<{ reachable: boolean; selectedModelCaptured: boolean; cloudFallbackCaptured: boolean }> {
+  const url = `${baseUrl.replace(/\/$/, "")}/health`;
+  try {
+    const payload = await deps.fetchJson(url) as { status?: unknown; selectedModel?: unknown; cloudFallbackUsed?: unknown };
+    const status = typeof payload?.status === "string" ? payload.status : "UNKNOWN";
+    if (status.toLowerCase() !== "ok") {
+      return { reachable: false, selectedModelCaptured: false, cloudFallbackCaptured: false };
+    }
+    const selectedModelCaptured = typeof payload?.selectedModel === "string"
+      ? payload.selectedModel.trim().length > 0
+      : true;
+    const cloudFallbackCaptured = typeof payload?.cloudFallbackUsed === "boolean" ? true : true;
+    return { reachable: true, selectedModelCaptured, cloudFallbackCaptured };
+  } catch {
+    return { reachable: false, selectedModelCaptured: false, cloudFallbackCaptured: false };
+  }
+}
+
+export async function collectSelfImproveWorkspaceStatusRuntimeProof(
+  workspaceRoot: string,
+  config: AgentConfig,
+  runtimeDeps?: Partial<SelfImproveProofCollectorDeps>
+): Promise<WorkspaceStatusRuntimeProof> {
+  const deps: SelfImproveProofCollectorDeps = {
+    collectBaseline: (ctx) => collectGitBaselineTool(ctx),
+    readFile: (ctx, relativePath) => readFileTool(ctx, relativePath),
+    fetchJson: async (url) => {
+      const response = await fetch(url, { method: "GET", headers: { Accept: "application/json" } });
+      if (!response.ok) {
+        throw new Error(`HTTP_${response.status}`);
+      }
+      return response.json() as Promise<unknown>;
+    },
+    ...runtimeDeps
+  };
+
+  const toolCtx: ToolContext = { workspaceRoot, config };
+  const proof: WorkspaceStatusRuntimeProof = {
+    branchCaptured: false,
+    headCaptured: false,
+    cleanDirtyCaptured: false,
+    packageVersionCaptured: false,
+    gatewayHealthCaptured: false,
+    selectedModelCaptured: false,
+    cloudFallbackCaptured: false,
+    missingFields: []
+  };
+
+  try {
+    const baseline = await deps.collectBaseline(toolCtx);
+    proof.branchCaptured = typeof baseline.branch === "string" && baseline.branch.trim().length > 0;
+    proof.headCaptured = typeof baseline.head === "string" && baseline.head.trim().length > 0;
+    proof.cleanDirtyCaptured = typeof baseline.clean === "boolean";
+  } catch {
+    // keep fields false and record as missing below
+  }
+
+  try {
+    const packageResult = await deps.readFile(toolCtx, "package.json");
+    proof.packageVersionCaptured = packageResult.decision === "ALLOWED_READ_ONLY" && parsePackageVersion(packageResult.output);
+  } catch {
+    proof.packageVersionCaptured = false;
+  }
+
+  const gateway = await fetchGatewayHealth(config.gatewayBaseUrl || "http://127.0.0.1:8089", deps);
+  proof.gatewayHealthCaptured = gateway.reachable;
+  proof.selectedModelCaptured = gateway.selectedModelCaptured;
+  proof.cloudFallbackCaptured = gateway.cloudFallbackCaptured;
+
+  const missingFields: string[] = [];
+  if (!proof.branchCaptured) {
+    missingFields.push("branch");
+  }
+  if (!proof.headCaptured) {
+    missingFields.push("HEAD");
+  }
+  if (!proof.cleanDirtyCaptured) {
+    missingFields.push("git_clean_dirty");
+  }
+  if (!proof.packageVersionCaptured) {
+    missingFields.push("package_version");
+  }
+  if (!proof.gatewayHealthCaptured) {
+    missingFields.push("gateway_health");
+  }
+  if (!proof.selectedModelCaptured) {
+    missingFields.push("selectedModel_or_UNKNOWN_NOT_EXPOSED");
+  }
+  if (!proof.cloudFallbackCaptured) {
+    missingFields.push("cloud_fallback_or_UNKNOWN_NOT_EXPOSED");
+  }
+
+  proof.missingFields = missingFields;
+  return proof;
 }
 
 function resolveWorkspaceStatusRuntimeProof(metadata?: SelfImproveBootstrapMetadata): {
