@@ -110,6 +110,12 @@ export function activate(context: vscode.ExtensionContext): void {
             logger,
             sessions,
             statusBar,
+            bootstrapMetadata: {
+              participantRegistered,
+              languageModelProviderRegistered,
+              participantId: "ayla-local-agent.chat",
+              languageModelVendor: "ayla-local-agent"
+            },
             onProgress: (message) => {
               stream.markdown(message);
             }

@@ -6,6 +6,7 @@ import { Logger } from "./logging";
 import { formatStructuredResult } from "./markdown";
 import { discoverModels, runChat } from "./ollama";
 import { applyPendingPatch, summarizePatch } from "./patch";
+import { buildSelfImproveStatusReport, isSelfImprovementPrompt, STATIC_SLASH_COMMANDS, SelfImproveBootstrapMetadata } from "./selfImprove";
 import { SessionStore } from "./state";
 import { PendingPatch, StructuredResult } from "./types";
 import { gitDiffTool, readFileTool, textSearchTool, validateTool } from "./tools";
@@ -16,6 +17,7 @@ interface RouterDeps {
   sessions: SessionStore;
   statusBar: vscode.StatusBarItem;
   onProgress?: (message: string) => void;
+  bootstrapMetadata?: SelfImproveBootstrapMetadata;
 }
 
 interface RequestContext {
@@ -27,24 +29,7 @@ interface RequestContext {
 }
 
 function helpText(): string {
-  return [
-    "`/ping`",
-    "`/health`",
-    "`/models`",
-    "`/use-model <name>`",
-    "`/probe <path>`",
-    "`/status`",
-    "`/read <path>`",
-    "`/search <query>`",
-    "`/diff`",
-    "`/plan <prompt>`",
-    "`/agent <prompt>`",
-    "`/patch <prompt>`",
-    "`/apply`",
-    "`/validate [command]`",
-    "`/reset-session`",
-    "`/help`"
-  ].join("\n");
+  return STATIC_SLASH_COMMANDS.map((command) => `\`/${command}\``).join("\n");
 }
 
 function buildResult(title: string, facts: string[], nextAction?: string): string {
@@ -171,6 +156,13 @@ export async function handleCommand(
           `State: ${session.lastStatus}`
         ]);
       }
+      case "self-improve": {
+        const mode = request.argumentText.trim().toLowerCase();
+        if (mode !== "status") {
+          return buildResult("Self Improve", ["Usage: /self-improve status"]);
+        }
+        return buildSelfImproveStatusReport(deps.config, deps.sessions, request.sessionId, request.workspaceRoot, deps.bootstrapMetadata);
+      }
       case "diff": {
         const result = await gitDiffTool(ctx);
         return buildResult("Diff", [`Decision: ${result.decision}`, result.output || "NO_DIFF"]);
@@ -206,7 +198,10 @@ export async function handleCommand(
           ? output.message ?? buildResult("Agent", ["No message returned."])
           : buildResult("Agent", [
             `Action: ${output.action}`,
-            output.message ?? "No message returned."
+            output.message ?? "No message returned.",
+            ...((output.message ?? "").includes("PLANNER_SCHEMA_INVALID") && isSelfImprovementPrompt(request.argumentText)
+              ? ["Suggestion: run /self-improve status for deterministic bootstrap."]
+              : [])
           ]);
       }
       case "patch": {
