@@ -1489,6 +1489,132 @@ test("READ_ONLY_REPO_AUDIT_ONLY fallback continues when one file read is unavail
   assert.doesNotMatch(result.message ?? "", /PLANNER_SCHEMA_INVALID/);
 });
 
+test("planner invalid JSON for READ_ONLY_REPO_AUDIT_ANALYSIS_ONLY uses deterministic read-only analysis fallback", async () => {
+  const prompt = "READ_ONLY_REPO_AUDIT_ANALYSIS_ONLY. Do not apply patches. Do not use /apply. Do not modify files. Do not commit. Do not create patches. Use package.json, src/selfImprove.ts, src/skills.ts, src/router.ts, src/agent.ts, src/tools.ts, src/config.ts, src/requestRouting.ts, scripts/ayla.ps1. Return FACTS, WEAKNESSES, ENGINEERING_BACKLOG, FIRST_RECOMMENDED_FRONT, UNKNOWN.";
+  const expectedReadPaths = [
+    "package.json",
+    "src/selfImprove.ts",
+    "src/skills.ts",
+    "src/router.ts",
+    "src/agent.ts",
+    "src/tools.ts",
+    "src/config.ts",
+    "src/requestRouting.ts",
+    "scripts/ayla.ps1"
+  ];
+  const readPaths: string[] = [];
+  let gitDiffCalled = 0;
+  let textSearchCalled = 0;
+
+  const result = await runBoundedAgent(
+    baseConfig,
+    "model",
+    prompt,
+    createLogger(),
+    "D:\\repo",
+    {
+      runModel: async () => "{\"intent\":\"agent_task\",}",
+      collectBaseline: async () => ({
+        branch: "main",
+        head: "abc123",
+        statusPorcelain: " M src/agent.ts",
+        clean: false,
+        toolsUsed: []
+      }),
+      gitStatus: async () => ({ decision: "ALLOWED_READ_ONLY", output: " M src/agent.ts" }),
+      gitDiff: async () => {
+        gitDiffCalled += 1;
+        return { decision: "ALLOWED_READ_ONLY", output: "" };
+      },
+      gitDiffForPath: async () => {
+        gitDiffCalled += 1;
+        return { decision: "ALLOWED_READ_ONLY", output: "" };
+      },
+      listDirectory: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+      readFile: async (_ctx, relativePath) => {
+        readPaths.push(relativePath);
+        if (relativePath === "src/selfImprove.ts") {
+          return {
+            decision: "ALLOWED_READ_ONLY",
+            output: [
+              "export const STATIC_SLASH_COMMANDS = [];",
+              "export const TOOL_LAYER_TOOL_NAMES = [];",
+              "const workspaceStatusSkill = getSkillDefinition(\"workspace_status_skill\");",
+              "const fixed = workspaceStatusSkill.allowedTools.includes(\"read_file\") && workspaceStatusSkill.allowedTools.includes(\"gateway_health\");"
+            ].join("\n"),
+            cwd: "D:\\repo",
+            truncated: false,
+            exitCode: 0
+          };
+        }
+        if (relativePath === "src/tools.ts") {
+          return {
+            decision: "ALLOWED_READ_ONLY",
+            output: "import * as cp from \"child_process\";\nexecImplementation(command, { cwd, timeout: timeoutMs }, cb);\nfindstr /S /N /I /P /C:\"x\" *",
+            cwd: "D:\\repo",
+            truncated: false,
+            exitCode: 0
+          };
+        }
+        if (relativePath === "src/config.ts") {
+          return {
+            decision: "ALLOWED_READ_ONLY",
+            output: "const SECTION = \"aylaLocalAgent\";\nconst MODERN_SECTION = \"ayla\";",
+            cwd: "D:\\repo",
+            truncated: false,
+            exitCode: 0
+          };
+        }
+        if (relativePath === "scripts/ayla.ps1") {
+          return {
+            decision: "ALLOWED_READ_ONLY",
+            output: "function Test-PortInUse([int]$Port) {\n$connections = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction Stop\nif (-not (Test-PortInUse 8089)) { }",
+            cwd: "D:\\repo",
+            truncated: false,
+            exitCode: 0
+          };
+        }
+        if (relativePath === "src/agent.ts") {
+          return {
+            decision: "ALLOWED_READ_ONLY",
+            output: "export async function runBoundedAgent() {}\nfunction buildEvidenceBackedFinal() {}\n".repeat(3000),
+            cwd: "D:\\repo",
+            truncated: false,
+            exitCode: 0
+          };
+        }
+        return {
+          decision: "ALLOWED_READ_ONLY",
+          output: `read-only content from ${relativePath}`,
+          cwd: "D:\\repo",
+          truncated: false,
+          exitCode: 0
+        };
+      },
+      textSearch: async () => {
+        textSearchCalled += 1;
+        return { decision: "ALLOWED_READ_ONLY", output: "" };
+      }
+    }
+  );
+
+  assert.equal(result.action, "final");
+  assert.doesNotMatch(result.message ?? "", /NO_PENDING_PATCH/);
+  assert.doesNotMatch(result.message ?? "", /PLANNER_SCHEMA_INVALID/);
+  assert.match(result.message ?? "", /### FACTS/);
+  assert.match(result.message ?? "", /### WEAKNESSES/);
+  assert.match(result.message ?? "", /### ENGINEERING_BACKLOG/);
+  assert.match(result.message ?? "", /### FIRST_RECOMMENDED_FRONT/);
+  assert.match(result.message ?? "", /### UNKNOWN/);
+  assert.match(result.message ?? "", /src\/selfImprove\.ts uses STATIC_SLASH_COMMANDS/);
+  assert.match(result.message ?? "", /SELF_IMPROVE_FRONT_SELECTION_PROOF/);
+  assert.match(result.message ?? "", /tools used: git_status, read_file/);
+  assert.match(result.message ?? "", /files modified: no/);
+  assert.deepEqual(readPaths, expectedReadPaths);
+  assert.equal(gitDiffCalled, 0);
+  assert.equal(textSearchCalled, 0);
+});
+
 test("read file policy blocker is reported instead of planner schema invalid", async () => {
   const result = await runBoundedAgent(
     baseConfig,

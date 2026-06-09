@@ -215,6 +215,30 @@ test("do not apply patches is treated as non-apply intent", async () => {
   assert.doesNotMatch(result.message ?? "", /NO_PENDING_PATCH/);
 });
 
+test("negated analysis-only audit prompt does not trigger approval apply path", async () => {
+  const { workspaceRoot } = await createWorkspace();
+  const patchSession = createPatchSession(workspaceRoot);
+
+  const result = await runBoundedAgent(
+    config,
+    "model",
+    "/agent READ_ONLY_REPO_AUDIT_ANALYSIS_ONLY. Do not apply patches. Do not use /apply. Do not modify files. Do not commit. Do not create patches. Use package.json, src/selfImprove.ts, src/skills.ts, src/router.ts, src/agent.ts, src/tools.ts, src/config.ts, src/requestRouting.ts, scripts/ayla.ps1. Return FACTS, WEAKNESSES, ENGINEERING_BACKLOG, FIRST_RECOMMENDED_FRONT, UNKNOWN.",
+    createLogger(),
+    workspaceRoot,
+    createRuntimeDeps(workspaceRoot),
+    { patchSession }
+  );
+
+  assert.equal(result.action, "final");
+  assert.match(result.message ?? "", /### FACTS/);
+  assert.match(result.message ?? "", /### WEAKNESSES/);
+  assert.match(result.message ?? "", /### ENGINEERING_BACKLOG/);
+  assert.match(result.message ?? "", /### FIRST_RECOMMENDED_FRONT/);
+  assert.match(result.message ?? "", /### UNKNOWN/);
+  assert.doesNotMatch(result.message ?? "", /NO_PENDING_PATCH/);
+  assert.doesNotMatch(result.message ?? "", /Approval Boundary/);
+});
+
 test("explicit approval applies only the exact pending patch and is single-use", async () => {
   const { workspaceRoot, fixturePath, relativeFixturePath } = await createWorkspace();
   const patchSession = createPatchSession(workspaceRoot);

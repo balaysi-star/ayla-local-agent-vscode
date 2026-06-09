@@ -1076,6 +1076,15 @@ function isReadOnlyRepoAuditFallbackRequest(prompt: string): boolean {
     || /\breturn\s+facts\s*,\s*weaknesses\s*,\s*engineering_backlog\s*,\s*first_read_only_verification\s*,\s*unknown\b/.test(normalized);
 }
 
+function isReadOnlyRepoAuditAnalysisFallbackRequest(prompt: string): boolean {
+  const normalized = prompt.toLowerCase();
+  if (isUnsafeFallbackRequest(prompt)) {
+    return false;
+  }
+  return /\bread_only_repo_audit_analysis_only\b/.test(normalized)
+    || /\breturn\s+facts\s*,\s*weaknesses\s*,\s*engineering_backlog\s*,\s*first_recommended_front\s*,\s*unknown\b/.test(normalized);
+}
+
 function extractPatchProposalOnlyTargetPath(prompt: string): string | undefined {
   const normalized = prompt.toLowerCase();
   if (!/\bpatch proposal only\b/.test(normalized) && !/\bprepare a patch proposal only\b/.test(normalized)) {
@@ -7240,6 +7249,33 @@ function createReadOnlyRepoAuditFallbackPlan(): PlannerDecision {
   };
 }
 
+function createReadOnlyRepoAuditAnalysisFallbackPlan(): PlannerDecision {
+  const readSteps = READ_ONLY_REPO_AUDIT_PATHS.map((auditPath) => ({
+    step: `Read ${auditPath} in read-only mode for analysis evidence.`,
+    tool: "read_file" as const,
+    args: { path: auditPath, allow_missing: true },
+    reason: "READ_ONLY_REPO_AUDIT_ANALYSIS_ONLY requires deterministic evidence from explicitly allowed safe files.",
+    risk: "low" as const
+  }));
+
+  return {
+    intent: "agent_task",
+    summary: "Collect deterministic read-only repository analysis evidence and produce a source-grounded analysis report.",
+    needsTools: true,
+    plan: [
+      {
+        step: "Collect read-only git workspace status.",
+        tool: "git_status",
+        args: {},
+        reason: "Read-only repo analysis needs branch, HEAD, and dirty-state evidence.",
+        risk: "low"
+      },
+      ...readSteps
+    ],
+    stopCondition: "When git status and deterministic read-only file evidence are captured for FACTS/WEAKNESSES/ENGINEERING_BACKLOG/FIRST_RECOMMENDED_FRONT/UNKNOWN."
+  };
+}
+
 function validatePlannerSemantics(prompt: string, decision: PlannerDecision): void {
   const nonNoneTools = decision.plan.filter((step) => step.tool !== "none");
 
@@ -8119,6 +8155,126 @@ function buildReadOnlyRepoAuditFinal(observations: ObservationRecord[], config: 
   };
 }
 
+function buildReadOnlyRepoAuditAnalysisFinal(observations: ObservationRecord[], config: AgentConfig): ActionEnvelope {
+  const statusObservation = observations.find((entry) => entry.tool === "git_status");
+  const baselineMap = new Map(
+    (statusObservation?.details ?? [])
+      .map((line) => {
+        const separator = line.indexOf(": ");
+        return separator >= 0 ? [line.slice(0, separator), line.slice(separator + 2)] as const : undefined;
+      })
+      .filter((entry): entry is readonly [string, string] => Boolean(entry))
+  );
+
+  const attempted = new Map<string, string>();
+  for (const entry of observations.filter((item) => item.tool === "read_file")) {
+    const pathLine = entry.details.find((line) => line.startsWith("read_file_path: "));
+    const outputLine = entry.details.find((line) => line.startsWith("read_file_output: "));
+    const filePath = pathLine?.slice("read_file_path: ".length);
+    const output = outputLine?.slice("read_file_output: ".length) ?? "READ_FILE_UNAVAILABLE:UNKNOWN";
+    if (filePath) {
+      attempted.set(filePath, output);
+    }
+  }
+
+  const getContent = (filePath: string): string => attempted.get(filePath) ?? "READ_FILE_UNAVAILABLE:NOT_CAPTURED";
+  const hasContent = (filePath: string, pattern: RegExp): boolean => {
+    const content = getContent(filePath);
+    if (/^READ_FILE_(UNAVAILABLE|POLICY_BLOCKED):/i.test(content)) {
+      return false;
+    }
+    return pattern.test(content);
+  };
+
+  const weaknesses: string[] = [];
+
+  const selfImproveStaticTables = hasContent("src/selfImprove.ts", /STATIC_SLASH_COMMANDS/) && hasContent("src/selfImprove.ts", /TOOL_LAYER_TOOL_NAMES/);
+  if (selfImproveStaticTables) {
+    weaknesses.push("src/selfImprove.ts uses STATIC_SLASH_COMMANDS / TOOL_LAYER_TOOL_NAMES static tables instead of deriving from live registries.");
+  }
+
+  const selfImproveAllowedToolsProof = hasContent("src/selfImprove.ts", /workspaceStatusSkill\.allowedTools\.includes\("read_file"\)/)
+    && hasContent("src/selfImprove.ts", /workspaceStatusSkill\.allowedTools\.includes\("gateway_health"\)/);
+  if (selfImproveAllowedToolsProof) {
+    weaknesses.push("src/selfImprove.ts marks workspace_status_skill fixed from allowedTools checks only, without runtime proof.");
+  }
+
+  const toolsExecShellFallback = hasContent("src/tools.ts", /import\s+\*\s+as\s+cp\s+from\s+"child_process"/)
+    && hasContent("src/tools.ts", /execImplementation\(command,\s*\{\s*cwd,\s*timeout:\s*timeoutMs\s*\}/)
+    && hasContent("src/tools.ts", /findstr\s*\/S\s*\/N\s*\/I\s*\/P/);
+  if (toolsExecShellFallback) {
+    weaknesses.push("src/tools.ts uses child_process exec with string commands and shell fallback behavior.");
+  }
+
+  const configSplitNamespaces = hasContent("src/config.ts", /const\s+SECTION\s*=\s*"aylaLocalAgent"/)
+    && hasContent("src/config.ts", /const\s+MODERN_SECTION\s*=\s*"ayla"/);
+  if (configSplitNamespaces) {
+    weaknesses.push("src/config.ts keeps split legacy/modern config namespaces (aylaLocalAgent.* and ayla.*).");
+  }
+
+  const launcherPortNotIdentity = hasContent("scripts/ayla.ps1", /Test-PortInUse\(8089\)|Test-PortInUse 8089/)
+    && hasContent("scripts/ayla.ps1", /Get-NetTCPConnection\s+-LocalPort\s+\$Port\s+-State\s+Listen/)
+    && !hasContent("scripts/ayla.ps1", /Get-CimInstance\s+Win32_Process|Get-Process\s+-Id/);
+  if (launcherPortNotIdentity) {
+    weaknesses.push("scripts/ayla.ps1 checks port 8089 availability but does not prove listener process identity.");
+  }
+
+  const agentMixedResponsibilities = hasContent("src/agent.ts", /export\s+async\s+function\s+runBoundedAgent/)
+    && hasContent("src/agent.ts", /function\s+buildEvidenceBackedFinal/)
+    && getContent("src/agent.ts").split(/\r?\n/).length > 2500;
+  if (agentMixedResponsibilities) {
+    weaknesses.push("src/agent.ts is a large mixed-responsibility file combining routing, policy, fallback, tool execution, and rendering.");
+  }
+
+  const missingEvidence = Array.from(attempted.entries())
+    .filter(([, output]) => /^READ_FILE_(UNAVAILABLE|POLICY_BLOCKED):/i.test(output))
+    .map(([filePath, output]) => `${filePath}: ${output}`);
+
+  const firstRecommendedFront = (selfImproveStaticTables || selfImproveAllowedToolsProof)
+    ? "SELF_IMPROVE_FRONT_SELECTION_PROOF"
+    : weaknesses.length > 0
+      ? "READ_ONLY_AUDIT_ANALYSIS_STABILIZATION_FRONT"
+      : "NO_FRONT_RECOMMENDED_FROM_CURRENT_EVIDENCE";
+
+  const toolsUsed = Array.from(new Set(observations.map((entry) => entry.tool)));
+
+  return {
+    action: "final",
+    message: sanitizeVisibleOutput([
+      "### FACTS",
+      `- branch: ${baselineMap.get("branch") ?? "UNKNOWN_NOT_INSPECTED"}`,
+      `- HEAD: ${baselineMap.get("HEAD") ?? "UNKNOWN_NOT_INSPECTED"}`,
+      `- git status clean/dirty: ${(baselineMap.get("git_status_clean") ?? "false") === "true" ? "clean" : "dirty"}`,
+      `- modified files: ${baselineMap.get("git_status_output") ?? "UNKNOWN_NOT_INSPECTED"}`,
+      `- files inspected for analysis: ${READ_ONLY_REPO_AUDIT_PATHS.join(", ")}`,
+      `- tools used: ${toolsUsed.join(", ")}`,
+      "- patch applied: no",
+      "- files modified: no",
+      "",
+      "### WEAKNESSES",
+      ...(weaknesses.length > 0
+        ? weaknesses.map((entry) => `- ${entry}`)
+        : ["- source-grounded weaknesses not detected from currently available evidence."]),
+      "",
+      "### ENGINEERING_BACKLOG",
+      "- add deterministic proofs that self-improvement status derives from live registries and runtime evidence, not static tables",
+      "- harden command execution wrappers to reduce shell-string execution surface where feasible",
+      "- split large mixed-responsibility runtime surfaces into focused modules while preserving read-only safety boundaries",
+      "",
+      "### FIRST_RECOMMENDED_FRONT",
+      `- ${firstRecommendedFront}`,
+      "",
+      "### UNKNOWN",
+      ...(missingEvidence.length > 0
+        ? [
+          "- missing read evidence:",
+          ...missingEvidence.map((entry) => `- ${entry}`)
+        ]
+        : ["- none from the deterministic read-only evidence set"]) 
+    ].join("\n"), config.maxTraceOutputBytes)
+  };
+}
+
 function buildCasualResponse(prompt: string): string {
   if (/what can you do/i.test(prompt)) {
     return "Ayla Local Agent can inspect workspace status, read files, search text, show targeted diffs, propose patches, and run approved local validations using local Ollama models.";
@@ -8276,6 +8432,7 @@ export async function runBoundedAgent(
   let usedSupervisorFallback = false;
   let supervisorFallbackReason = "";
   let usedReadOnlyRepoAuditFallback = false;
+  let usedReadOnlyRepoAuditAnalysisFallback = false;
   let selectedSkill: SkillSelection | undefined;
   let patchProposalTargetPath: string | undefined = extractPatchProposalOnlyTargetPath(prompt);
   try {
@@ -8296,11 +8453,17 @@ export async function runBoundedAgent(
     const exactDiffPath = extractExactGitDiffPath(prompt);
     const exactReadPath = extractExactReadFilePath(prompt);
     const scopedTextSearch = extractScopedTextSearchRequest(prompt);
+    const readOnlyRepoAuditAnalysisRequest = isReadOnlyRepoAuditAnalysisFallbackRequest(prompt);
     const readOnlyRepoAuditRequest = isReadOnlyRepoAuditFallbackRequest(prompt);
     if (patchProposalTargetPath) {
       planner = createPatchProposalOnlyFallbackPlan(patchProposalTargetPath);
       usedSupervisorFallback = true;
       supervisorFallbackReason = "Planner schema/semantic validation failed; supervisor inferred a safe proposal-only patch review fallback backed by read-only evidence.";
+    } else if (readOnlyRepoAuditAnalysisRequest) {
+      planner = createReadOnlyRepoAuditAnalysisFallbackPlan();
+      usedSupervisorFallback = true;
+      usedReadOnlyRepoAuditAnalysisFallback = true;
+      supervisorFallbackReason = "Planner schema/semantic validation failed; supervisor inferred deterministic READ_ONLY_REPO_AUDIT_ANALYSIS_ONLY read-only analysis fallback evidence collection.";
     } else if (readOnlyRepoAuditRequest) {
       planner = createReadOnlyRepoAuditFallbackPlan();
       usedSupervisorFallback = true;
@@ -8639,6 +8802,9 @@ export async function runBoundedAgent(
   emit("final_report", "### Final Report\n\n* Planner stop condition reached.");
   if (selectedSkill?.skill.name === "patch_proposal_skill" && patchProposalTargetPath) {
     return buildPatchProposalOnlyFinal(observations, config, selectedSkill, patchProposalTargetPath);
+  }
+  if (usedReadOnlyRepoAuditAnalysisFallback) {
+    return buildReadOnlyRepoAuditAnalysisFinal(observations, config);
   }
   if (usedReadOnlyRepoAuditFallback) {
     return buildReadOnlyRepoAuditFinal(observations, config);
