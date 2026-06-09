@@ -1,0 +1,11 @@
+node_modules/
+out/
+*.vsix
+.tmp-vscode-*
+.vscode-*
+.amazonq/
+gateway-*.txt
+gateway-*.log
+*.log
+.DS_Store
+dist/

@@ -1,0 +1,4 @@
+{
+  "aylaLocalAgent.ollamaBaseUrl": "http://172.27.208.1:11434",
+  "aylaLocalAgent.activeModel": "ayla-local-coder"
+}

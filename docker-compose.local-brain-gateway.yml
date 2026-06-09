@@ -1,0 +1,15 @@
+services:
+  ayla-local-brain-gateway:
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
+    container_name: ayla-local-brain-gateway
+    environment:
+      AYLA_GATEWAY_PORT: ${AYLA_GATEWAY_PORT:-8089}
+      AYLA_OLLAMA_BASE_URL: ${AYLA_OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      AYLA_DEFAULT_MODEL: ${AYLA_DEFAULT_MODEL:-}
+      AYLA_RESEARCH_ENABLED: ${AYLA_RESEARCH_ENABLED:-false}
+      AYLA_GITHUB_RESEARCH_ENABLED: ${AYLA_GITHUB_RESEARCH_ENABLED:-false}
+      AYLA_WEB_RESEARCH_ENABLED: ${AYLA_WEB_RESEARCH_ENABLED:-false}
+    ports:
+      - "${AYLA_GATEWAY_PORT:-8089}:8089"

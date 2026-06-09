@@ -1,0 +1,13 @@
+{
+  "name": "ayla-local-brain-gateway",
+  "version": "0.0.48",
+  "private": true,
+  "type": "commonjs",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "node ../node_modules/typescript/bin/tsc -p ./tsconfig.json",
+    "test": "npm run build && node --test dist/tests/*.test.js",
+    "start": "node ./dist/server.js",
+    "dev": "npm run build && npm run start"
+  }
+}

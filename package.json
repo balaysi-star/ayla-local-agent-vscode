@@ -1,0 +1,335 @@
+{
+  "name": "ayla-local-agent-vscode",
+  "displayName": "Ayla Local Agent",
+  "description": "Standalone internal-model chat participant for VS Code backed by Ollama.",
+  "version": "0.0.58",
+  "publisher": "internal",
+  "engines": {
+    "vscode": "^1.105.0"
+  },
+  "categories": [
+    "AI",
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onChatParticipant:ayla-local-agent.chat",
+    "onLanguageModelChatProvider:ayla-local-agent",
+    "onCommand:aylaLocalAgent.pickModel",
+    "onCommand:aylaLocalAgent.showHealth",
+    "onCommand:aylaLocalAgent.showStatus",
+    "onCommand:aylaLocalAgent.resetSession",
+    "onCommand:aylaLocalAgent.validateWorkspace",
+    "onCommand:aylaLocalAgent.activationDiagnostics",
+    "onCommand:aylaLocalAgent.openDirectChatDiagnostics"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languageModelChatProviders": [
+      {
+        "vendor": "ayla-local-agent",
+        "displayName": "Ayla Local Gateway"
+      }
+    ],
+    "chatParticipants": [
+      {
+        "id": "ayla-local-agent.chat",
+        "name": "ayla-agent",
+        "fullName": "Ayla Local Agent",
+        "description": "Local workspace assistant backed by an internal Ollama model picker.",
+        "isSticky": true,
+        "commands": [
+          {
+            "name": "ping",
+            "description": "Check the participant wiring."
+          },
+          {
+            "name": "health",
+            "description": "Check Ollama availability."
+          },
+          {
+            "name": "models",
+            "description": "List available Ollama models."
+          },
+          {
+            "name": "use-model",
+            "description": "Switch the active model for this session."
+          },
+          {
+            "name": "probe",
+            "description": "Run a bounded read-only probe."
+          },
+          {
+            "name": "status",
+            "description": "Show session and model status."
+          },
+          {
+            "name": "read",
+            "description": "Read a workspace file."
+          },
+          {
+            "name": "search",
+            "description": "Search workspace text."
+          },
+          {
+            "name": "diff",
+            "description": "Show git diff summary."
+          },
+          {
+            "name": "plan",
+            "description": "Ask the model for a bounded plan."
+          },
+          {
+            "name": "agent",
+            "description": "Run the bounded internal agent loop."
+          },
+          {
+            "name": "patch",
+            "description": "Propose a patch without applying it."
+          },
+          {
+            "name": "apply",
+            "description": "Apply the pending patch after approval."
+          },
+          {
+            "name": "validate",
+            "description": "Run bounded validation commands."
+          },
+          {
+            "name": "reset-session",
+            "description": "Clear session state."
+          },
+          {
+            "name": "help",
+            "description": "Show command help."
+          }
+        ]
+      }
+    ],
+    "commands": [
+      {
+        "command": "aylaLocalAgent.pickModel",
+        "title": "Ayla Local Agent: Select Model"
+      },
+      {
+        "command": "aylaLocalAgent.showHealth",
+        "title": "Ayla Local Agent: Health Check"
+      },
+      {
+        "command": "aylaLocalAgent.showStatus",
+        "title": "Ayla Local Agent: Show Status"
+      },
+      {
+        "command": "aylaLocalAgent.resetSession",
+        "title": "Ayla Local Agent: Reset Session"
+      },
+      {
+        "command": "aylaLocalAgent.validateWorkspace",
+        "title": "Ayla Local Agent: Validate Workspace"
+      },
+      {
+        "command": "aylaLocalAgent.activationDiagnostics",
+        "title": "Ayla Local Agent: Activation Diagnostics"
+      },
+      {
+        "command": "aylaLocalAgent.openDirectChatDiagnostics",
+        "title": "Ayla Local Agent: Open Direct Chat Diagnostics"
+      }
+    ],
+    "configuration": {
+      "title": "Ayla Local Agent",
+      "properties": {
+        "aylaLocalAgent.ollamaBaseUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:11434",
+          "markdownDescription": "Base URL for the local Ollama server."
+        },
+        "aylaLocalAgent.activeModel": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Active Ollama model used when the session has no explicit override."
+        },
+        "aylaLocalAgent.defaultModel": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Legacy fallback model when aylaLocalAgent.activeModel is unset."
+        },
+        "aylaLocalAgent.defaultNonSlashMode": {
+          "type": "string",
+          "enum": [
+            "smart",
+            "agent",
+            "chat"
+          ],
+          "default": "smart",
+          "markdownDescription": "How normal non-slash prompts should be handled by the local agent."
+        },
+        "aylaLocalAgent.maxSteps": {
+          "type": "number",
+          "default": 4,
+          "minimum": 1,
+          "maximum": 12,
+          "markdownDescription": "Maximum internal agent loop steps."
+        },
+        "aylaLocalAgent.commandTimeoutMs": {
+          "type": "number",
+          "default": 15000,
+          "minimum": 1000,
+          "maximum": 120000,
+          "markdownDescription": "Timeout for bounded local commands."
+        },
+        "aylaLocalAgent.readMaxBytes": {
+          "type": "number",
+          "default": 32768,
+          "minimum": 1024,
+          "maximum": 262144,
+          "markdownDescription": "Maximum bytes returned from a file read."
+        },
+        "aylaLocalAgent.searchMaxResults": {
+          "type": "number",
+          "default": 50,
+          "minimum": 1,
+          "maximum": 200,
+          "markdownDescription": "Maximum text-search matches returned per request."
+        },
+        "aylaLocalAgent.showAgentTrace": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show visible agent trace sections directly in chat during agent runs."
+        },
+        "aylaLocalAgent.showCommandOutput": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show bounded command output and observation details in the chat trace."
+        },
+        "aylaLocalAgent.showModelActionJson": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Show bounded parsed model action JSON in the chat trace."
+        },
+        "aylaLocalAgent.maxTraceOutputBytes": {
+          "type": "number",
+          "default": 12000,
+          "minimum": 1024,
+          "maximum": 64000,
+          "markdownDescription": "Maximum bytes of command or observation text shown in the chat trace."
+        },
+        "aylaLocalAgent.commandAllowlist": {
+          "type": "array",
+          "default": [
+            "git status --short",
+            "git diff --stat",
+            "git diff --cached --stat",
+            "npm test",
+            "npm run compile"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "markdownDescription": "Explicit command prefixes allowed through run-command and validate."
+        },
+        "aylaLocalAgent.blockedPaths": {
+          "type": "array",
+          "default": [
+            ".git",
+            ".env",
+            "node_modules",
+            "dist",
+            "out"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "markdownDescription": "Workspace-relative paths blocked from direct reads or edits."
+        },
+        "ayla.ollama.baseUrl": {
+          "type": "string",
+          "default": "http://localhost:11434",
+          "markdownDescription": "Base URL for the local Ollama server used by Ayla local model provider."
+        },
+        "ayla.ollama.defaultModel": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Default Ollama model id used for Ayla local sessions."
+        },
+        "ayla.modelProvider.mode": {
+          "type": "string",
+          "enum": [
+            "local-ollama"
+          ],
+          "default": "local-ollama",
+          "markdownDescription": "Model provider mode for Ayla agent runtime."
+        },
+        "ayla.gateway.enabled": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Enable the Ayla Local Brain Gateway as the primary local model/runtime provider."
+        },
+        "ayla.gateway.baseUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:8089",
+          "markdownDescription": "Base URL for the Ayla Local Brain Gateway."
+        },
+        "ayla.gateway.mode": {
+          "type": "string",
+          "enum": [
+            "required",
+            "direct-local"
+          ],
+          "default": "required",
+          "markdownDescription": "Gateway failure mode: require the gateway, or explicitly allow direct local fallback."
+        },
+        "ayla.gateway.research.enabled": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Enable gateway research endpoints when the gateway supports them."
+        },
+        "ayla.gateway.preferGateway": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Prefer the gateway over direct Ollama for the main Ayla Agent path."
+        },
+        "ayla.gateway.containerSidecar.enabled": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Use the internal container sidecar adapter instead of the gateway server when gateway routing is enabled."
+        },
+        "ayla.gateway.containerSidecar.chatBaseUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:5005",
+          "markdownDescription": "Base URL for the local ayla-ollama chat sidecar."
+        },
+        "ayla.gateway.containerSidecar.openAiBaseUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:11435",
+          "markdownDescription": "Base URL for the local OpenAI-compatible sidecar wrapper."
+        },
+        "ayla.gateway.containerSidecar.timeoutMs": {
+          "type": "number",
+          "default": 30000,
+          "minimum": 1000,
+          "maximum": 300000,
+          "markdownDescription": "Timeout for container sidecar health, chat, and trace requests."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "node -e \"require('fs').rmSync('out',{ recursive: true, force: true })\" && tsc -p ./",
+    "watch": "tsc -w -p ./",
+    "test": "npm run compile && node --test out/test/*.test.js",
+    "package": "npx @vscode/vsce package --no-dependencies",
+    "gateway:smoke": "npm run compile && node ./out/gatewaySmoke.js",
+    "gateway:build": "node ./node_modules/typescript/bin/tsc -p ./gateway/tsconfig.json",
+    "gateway:test": "npm run gateway:build && node --test gateway/dist/tests/*.test.js",
+    "gateway:start": "node ./gateway/dist/server.js",
+    "gateway:dev": "npm run gateway:build && npm run gateway:start",
+    "gateway:docker:build": "docker build -f gateway/Dockerfile -t ayla-local-brain-gateway .",
+    "gateway:docker:up": "docker compose -f docker-compose.local-brain-gateway.yml up --build -d"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/vscode": "^1.105.0",
+    "typescript": "^5.9.3"
+  }
+}

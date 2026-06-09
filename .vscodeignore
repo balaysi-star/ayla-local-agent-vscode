@@ -1,0 +1,13 @@
+.vscode/**
+.vscode-extensions/**
+.vscode-user-data/**
+.tmp-vscode-ext/**
+.tmp-vscode-user/**
+.tmp-vscode-*
+src/**
+tsconfig.json
+node_modules/.cache/**
+*.vsix
+*.log
+gateway-start.out.txt
+gateway-start.err.txt

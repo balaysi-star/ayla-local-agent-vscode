@@ -1,0 +1,45 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Run Ayla Local Agent Extension",
+            "type": "extensionHost",
+            "request": "launch",
+            "args": [
+                "--extensionDevelopmentPath=${workspaceFolder}",
+                "--disable-extensions",
+                "--disable-extension=vscode.github-authentication",
+                "--disable-extension=GitHub.copilot",
+                "--disable-extension=GitHub.copilot-chat",
+                "${workspaceFolder}"
+            ],
+            "outFiles": [
+                "${workspaceFolder}/out/**/*.js"
+            ],
+            "env": {
+                "AYLA_OLLAMA_BASE_URL": "http://172.27.208.1:11434",
+                "AYLA_ACTIVE_MODEL": "ayla-local-coder:latest"
+            },
+            "preLaunchTask": "compile (npm.cmd)"
+        },
+        {
+            "name": "Run Ayla Local Agent Extension (No Debug)",
+            "type": "extensionHost",
+            "request": "launch",
+            "noDebug": true,
+            "args": [
+                "--extensionDevelopmentPath=${workspaceFolder}",
+                "--disable-extensions",
+                "${workspaceFolder}"
+            ],
+            "outFiles": [
+                "${workspaceFolder}/out/**/*.js"
+            ],
+            "env": {
+                "AYLA_OLLAMA_BASE_URL": "http://172.27.208.1:11434",
+                "AYLA_ACTIVE_MODEL": "ayla-local-coder:latest"
+            },
+            "preLaunchTask": "compile (npm.cmd)"
+        }
+    ]
+}
