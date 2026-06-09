@@ -61,10 +61,31 @@ test("self-improve status report includes backlog and deterministic first recomm
   assert.match(output, /4\. MISSING_FIELDS_REPORTING/);
   assert.match(output, /5\. AYLA_CHAT_VIEW/);
   assert.match(output, /6\. SELF_REPAIR_LOOP_V1/);
-  assert.match(output, /### FIRST_RECOMMENDED_FRONT\nPLANNER_SCHEMA_RELIABILITY/);
-  assert.match(output, /workspace_status_skill currently git-only unless fixed: fixed/);
+  assert.match(output, /### FIRST_RECOMMENDED_FRONT\nFULL_WORKSPACE_STATUS_SKILL/);
+  assert.match(output, /workspace_status_skill runtime proof: UNKNOWN_NOT_PROVEN/);
+  assert.match(output, /workspace_status_skill missing fields for proof: branch, HEAD, git_clean_dirty, package_version, gateway_health, selectedModel_or_UNKNOWN_NOT_EXPOSED, cloud_fallback_or_UNKNOWN_NOT_EXPOSED, missing_fields/);
   assert.match(output, /repo\/workspace root: D:\/repo/);
   assert.match(output, /active model: qwen2\.5-coder:14b/);
+});
+
+test("self-improve status promotes front only when deterministic runtime proof is complete", () => {
+  const sessions = new SessionStore();
+  const output = buildSelfImproveStatusReport(createConfig(), sessions, "s3", "D:/repo", {
+    workspaceStatusRuntimeProof: {
+      branchCaptured: true,
+      headCaptured: true,
+      cleanDirtyCaptured: true,
+      packageVersionCaptured: true,
+      gatewayHealthCaptured: true,
+      selectedModelCaptured: true,
+      cloudFallbackCaptured: true,
+      missingFields: []
+    }
+  });
+
+  assert.match(output, /workspace_status_skill runtime proof: PROVEN/);
+  assert.match(output, /workspace_status_skill missing fields for proof: none/);
+  assert.match(output, /### FIRST_RECOMMENDED_FRONT\nPLANNER_SCHEMA_RELIABILITY/);
 });
 
 test("self-improvement prompt detector is deterministic", () => {

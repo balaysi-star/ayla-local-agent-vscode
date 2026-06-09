@@ -42,6 +42,69 @@ export interface SelfImproveBootstrapMetadata {
   languageModelProviderRegistered?: boolean;
   participantId?: string;
   languageModelVendor?: string;
+  workspaceStatusRuntimeProof?: {
+    branchCaptured?: boolean;
+    headCaptured?: boolean;
+    cleanDirtyCaptured?: boolean;
+    packageVersionCaptured?: boolean;
+    gatewayHealthCaptured?: boolean;
+    selectedModelCaptured?: boolean;
+    cloudFallbackCaptured?: boolean;
+    missingFields?: string[];
+  };
+}
+
+function resolveWorkspaceStatusRuntimeProof(metadata?: SelfImproveBootstrapMetadata): {
+  status: "PROVEN" | "UNKNOWN_NOT_PROVEN";
+  missingFields: string[];
+} {
+  const proof = metadata?.workspaceStatusRuntimeProof;
+  if (!proof) {
+    return {
+      status: "UNKNOWN_NOT_PROVEN",
+      missingFields: [
+        "branch",
+        "HEAD",
+        "git_clean_dirty",
+        "package_version",
+        "gateway_health",
+        "selectedModel_or_UNKNOWN_NOT_EXPOSED",
+        "cloud_fallback_or_UNKNOWN_NOT_EXPOSED",
+        "missing_fields"
+      ]
+    };
+  }
+
+  const missing: string[] = [];
+  if (!proof.branchCaptured) {
+    missing.push("branch");
+  }
+  if (!proof.headCaptured) {
+    missing.push("HEAD");
+  }
+  if (!proof.cleanDirtyCaptured) {
+    missing.push("git_clean_dirty");
+  }
+  if (!proof.packageVersionCaptured) {
+    missing.push("package_version");
+  }
+  if (!proof.gatewayHealthCaptured) {
+    missing.push("gateway_health");
+  }
+  if (!proof.selectedModelCaptured) {
+    missing.push("selectedModel_or_UNKNOWN_NOT_EXPOSED");
+  }
+  if (!proof.cloudFallbackCaptured) {
+    missing.push("cloud_fallback_or_UNKNOWN_NOT_EXPOSED");
+  }
+  if (!Array.isArray(proof.missingFields)) {
+    missing.push("missing_fields");
+  }
+
+  return {
+    status: missing.length === 0 ? "PROVEN" : "UNKNOWN_NOT_PROVEN",
+    missingFields: missing.length === 0 ? [] : missing
+  };
 }
 
 export function isSelfImprovementPrompt(prompt: string): boolean {
@@ -76,8 +139,7 @@ export function buildSelfImproveStatusReport(
   const skills = getSkillRegistry().map((skill) => skill.name).join(", ");
   const tools = TOOL_LAYER_TOOL_NAMES.join(", ");
 
-  const workspaceStatusSkill = getSkillDefinition("workspace_status_skill");
-  const fullWorkspaceStatusFixed = workspaceStatusSkill.allowedTools.includes("read_file") && workspaceStatusSkill.allowedTools.includes("gateway_health");
+  const workspaceStatusRuntimeProof = resolveWorkspaceStatusRuntimeProof(metadata);
   const backlog = [
     "FULL_WORKSPACE_STATUS_SKILL",
     "GATEWAY_HEALTH_TOOL",
@@ -86,7 +148,7 @@ export function buildSelfImproveStatusReport(
     "AYLA_CHAT_VIEW",
     "SELF_REPAIR_LOOP_V1"
   ];
-  const firstRecommendedFront = fullWorkspaceStatusFixed
+  const firstRecommendedFront = workspaceStatusRuntimeProof.status === "PROVEN"
     ? "PLANNER_SCHEMA_RELIABILITY"
     : "FULL_WORKSPACE_STATUS_SKILL";
 
@@ -110,7 +172,8 @@ export function buildSelfImproveStatusReport(
     "### CURRENT_LIMITS",
     "- no-mention chat depends on VS Code model picker.",
     "- planner schema can fail with PLANNER_SCHEMA_INVALID.",
-    `- workspace_status_skill currently git-only unless fixed: ${fullWorkspaceStatusFixed ? "fixed" : "not fixed"}.`,
+    `- workspace_status_skill runtime proof: ${workspaceStatusRuntimeProof.status}.`,
+    `- workspace_status_skill missing fields for proof: ${workspaceStatusRuntimeProof.missingFields.length > 0 ? workspaceStatusRuntimeProof.missingFields.join(", ") : "none"}.`,
     "- any missing gateway/package fields must be explicit.",
     "",
     "### SELF_IMPROVEMENT_BACKLOG",
