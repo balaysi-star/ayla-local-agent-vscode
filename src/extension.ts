@@ -8,6 +8,8 @@ import { parseRequestPayload, requiresWorkspace } from "./requestRouting";
 import { handleCommand } from "./router";
 import { SessionStore } from "./state";
 
+const LOCAL_ENGINEER_EXECUTION_MODE_TOKEN = "LOCAL_ENGINEER_EXECUTION_MODE";
+
 function workspaceRoot(): string | undefined {
   return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 }
@@ -20,6 +22,17 @@ function resolveWorkspaceRoot(request: any): string | undefined {
 
 function getSessionId(request: any, context: any): string {
   return context?.sessionId ?? request?.context?.sessionId ?? "default";
+}
+
+function forceAgentCommandForKnownAgentToken(parsed: ReturnType<typeof parseRequestPayload>): ReturnType<typeof parseRequestPayload> {
+  if (parsed.command === "chat" && parsed.argumentText.trim().startsWith(LOCAL_ENGINEER_EXECUTION_MODE_TOKEN)) {
+    return {
+      command: "agent",
+      argumentText: parsed.argumentText,
+      explicitSlash: true
+    };
+  }
+  return parsed;
 }
 
 function describeError(error: unknown, ollamaBaseUrl: string): string {
@@ -85,7 +98,7 @@ export function activate(context: vscode.ExtensionContext): void {
   let participantRegistered = false;
   if (typeof createParticipant === "function") {
     const participant = createParticipant("ayla-local-agent.chat", async (request: any, context: any, stream: any) => {
-      const parsed = parseRequestPayload(request);
+      const parsed = forceAgentCommandForKnownAgentToken(parseRequestPayload(request));
       const root = resolveWorkspaceRoot(request);
       const liveConfig = getLiveConfig();
       const sessionId = getSessionId(request, context);
@@ -104,6 +117,9 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
       try {
+        if (parsed.command === "agent" && parsed.argumentText.trim().startsWith(LOCAL_ENGINEER_EXECUTION_MODE_TOKEN)) {
+          stream.markdown(`* route: local_engineer_execution_mode\n* workspace: ${root ?? "none"}\n\n`);
+        }
         const response = await handleCommand(
           {
             config: liveConfig,
