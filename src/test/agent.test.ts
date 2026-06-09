@@ -753,6 +753,63 @@ test("status task is planned as agent_task and selects git_status", async () => 
   assert.ok(progressEvents.some((entry) => entry.includes("git branch --show-current")));
 });
 
+test("full workspace status includes package and gateway fields", async () => {
+  const result = await runBoundedAgent(baseConfig, "model", "inspect workspace status fully. Return git branch, git status, package version from package.json, gateway health at http://127.0.0.1:8089/health, selectedModel, and cloud fallback status.", createLogger(), "D:\\repo", {
+    runModel: async () => "{\"intent\":\"agent_task\",\"summary\":\"Inspect workspace status fully\",\"needsTools\":true,\"plan\":[{\"step\":\"Inspect workspace git status\",\"tool\":\"git_status\",\"reason\":\"Need branch, head, and dirty state\",\"risk\":\"low\"},{\"step\":\"Read package version\",\"tool\":\"read_file\",\"reason\":\"Need package version\",\"risk\":\"low\",\"args\":{\"path\":\"package.json\"}},{\"step\":\"Check gateway health\",\"tool\":\"gateway_health\",\"reason\":\"Need selected model evidence\",\"risk\":\"low\"}],\"stopCondition\":\"When all status fields are captured\"}",
+    collectBaseline: async () => ({
+      branch: "main",
+      head: "abc123",
+      statusPorcelain: "",
+      clean: true,
+      toolsUsed: ["git branch --show-current", "git rev-parse HEAD", "git status --porcelain=v1 -uno"]
+    }),
+    gitStatus: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+    gatewayHealth: async () => ({ decision: "ALLOWED_READ_ONLY", output: JSON.stringify({ status: "ok", selectedModel: "qwen2.5-coder:14b" }) }),
+    gitDiff: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+    gitDiffForPath: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+    listDirectory: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+    readFile: async () => ({ decision: "ALLOWED_READ_ONLY", output: JSON.stringify({ version: "0.0.58" }) }),
+    textSearch: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" })
+  });
+
+  assert.equal(result.action, "final");
+  assert.match(result.message ?? "", /branch: main/);
+  assert.match(result.message ?? "", /HEAD: abc123/);
+  assert.match(result.message ?? "", /git status clean\/dirty: clean/);
+  assert.match(result.message ?? "", /package version \(package\.json\): 0\.0\.58/);
+  assert.match(result.message ?? "", /gateway health \(http:\/\/127\.0\.0\.1:8089\/health\): ok/);
+  assert.match(result.message ?? "", /selectedModel: qwen2\.5-coder:14b/);
+  assert.match(result.message ?? "", /cloud fallback status: UNKNOWN_NOT_EXPOSED/);
+});
+
+test("full workspace status reports package and gateway blockers as explicit values", async () => {
+  const result = await runBoundedAgent(baseConfig, "model", "inspect workspace status fully. Return git branch, git status, package version from package.json, gateway health at http://127.0.0.1:8089/health, selectedModel, and cloud fallback status.", createLogger(), "D:\\repo", {
+    runModel: async () => "{\"intent\":\"agent_task\",\"summary\":\"Inspect workspace status fully\",\"needsTools\":true,\"plan\":[{\"step\":\"Inspect workspace git status\",\"tool\":\"git_status\",\"reason\":\"Need branch, head, and dirty state\",\"risk\":\"low\"},{\"step\":\"Read package version\",\"tool\":\"read_file\",\"reason\":\"Need package version\",\"risk\":\"low\",\"args\":{\"path\":\"package.json\"}},{\"step\":\"Check gateway health\",\"tool\":\"gateway_health\",\"reason\":\"Need selected model evidence\",\"risk\":\"low\"}],\"stopCondition\":\"When all status fields are captured\"}",
+    collectBaseline: async () => ({
+      branch: "main",
+      head: "abc123",
+      statusPorcelain: " M src/file.ts",
+      clean: false,
+      toolsUsed: ["git branch --show-current", "git rev-parse HEAD", "git status --porcelain=v1 -uno"]
+    }),
+    gitStatus: async () => ({ decision: "ALLOWED_READ_ONLY", output: " M src/file.ts" }),
+    gatewayHealth: async () => ({ decision: "ALLOWED_READ_ONLY", output: "GATEWAY_UNREACHABLE:connection_refused:fetch failed", exitCode: 1 }),
+    gitDiff: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+    gitDiffForPath: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+    listDirectory: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+    readFile: async () => {
+      throw new Error("ENOENT: no such file or directory");
+    },
+    textSearch: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" })
+  });
+
+  assert.equal(result.action, "final");
+  assert.match(result.message ?? "", /package version \(package\.json\): PACKAGE_JSON_NOT_FOUND/);
+  assert.match(result.message ?? "", /gateway health \(http:\/\/127\.0\.0\.1:8089\/health\): GATEWAY_UNREACHABLE:connection_refused:fetch failed/);
+  assert.match(result.message ?? "", /selectedModel: UNKNOWN_NOT_EXPOSED/);
+  assert.match(result.message ?? "", /cloud fallback status: UNKNOWN_NOT_EXPOSED/);
+});
+
 test("dirty-state diff prompt plans git_status and exact-path git_diff", async () => {
   let gitDiffPath: string | undefined;
   const progressEvents: string[] = [];

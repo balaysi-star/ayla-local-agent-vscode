@@ -43,7 +43,7 @@ Required schema:
   "plan": [
     {
       "step": "short step",
-      "tool": "none" | "git_status" | "git_diff" | "read_file" | "list_directory" | "text_search" | "run_command" | "validate" | "propose_patch",
+      "tool": "none" | "git_status" | "gateway_health" | "git_diff" | "read_file" | "list_directory" | "text_search" | "run_command" | "validate" | "propose_patch",
       "reason": "one concise operational reason",
       "risk": "low" | "medium" | "high",
       "args": { "path": "optional workspace-relative path", "query": "optional query", "command": "optional allowlisted command" }
@@ -62,6 +62,7 @@ Rules:
 - Use git_diff only with a specific workspace-relative path unless the user explicitly requests a broad diff.
 - Available tools:
   - git_status: workspace/repo/branch/HEAD/dirty-state/status requests.
+  - gateway_health: gateway /health checks, selectedModel evidence, and cloud-fallback exposure checks.
   - git_diff: diff requests; requires a specific path unless broad diff is explicitly requested and policy allows it.
   - read_file: specific file questions.
   - list_directory: bounded directory inspection.

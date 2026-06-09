@@ -140,6 +140,7 @@ export type PlannerIntent = "casual_response" | "agent_task" | "clarification_ne
 export type PlannerTool =
   | "none"
   | "git_status"
+  | "gateway_health"
   | "git_diff"
   | "read_file"
   | "list_directory"

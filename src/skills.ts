@@ -29,8 +29,8 @@ const SKILL_REGISTRY: Record<SkillName, SkillDefinition> = {
   workspace_status_skill: {
     name: "workspace_status_skill",
     purpose: "Inspect workspace status read-only.",
-    allowedTools: ["git_status"],
-    policyScope: "Read-only workspace git status.",
+    allowedTools: ["git_status", "read_file", "gateway_health"],
+    policyScope: "Read-only workspace status including git, package metadata, and gateway health evidence.",
     runtimeEnabled: true
   },
   targeted_diff_skill: {
@@ -114,10 +114,11 @@ export function selectSkillForPlannerDecision(prompt: string, decision: PlannerD
     return undefined;
   }
 
-  if (tools.length === 1 && tools[0] === "git_status") {
+  const workspaceStatusTools = new Set(["git_status", "read_file", "gateway_health"]);
+  if (tools.length >= 1 && tools.includes("git_status") && tools.every((tool) => workspaceStatusTools.has(tool))) {
     return {
       skill: getSkillDefinition("workspace_status_skill"),
-      reason: "The plan only needs read-only workspace status evidence.",
+      reason: "The plan needs read-only workspace status evidence.",
       toolsPlanned: tools
     };
   }

@@ -3,6 +3,7 @@ import * as cp from "child_process";
 import * as fs from "fs/promises";
 import * as path from "path";
 import { AgentConfig, DefaultNonSlashMode } from "./config";
+import { classifyGatewayFailureType } from "./gatewayConnectivity";
 import { DynamicAgentAction, DynamicActionValidationIssue, getDynamicActionSchemaIssue, parseDynamicAgentAction } from "./actionProtocol";
 import { evaluateDynamicActionPolicy } from "./actionPolicy";
 import { appendDecisionNotes, appendEngineeringPlanNotes, appendValidationFailureNotes, buildInitialContextNotes, checkContextNotesProgress, inspectContextNotes, inspectEngineeringPlan, requireContextNotesBeforeEdit, requireContextNotesBeforeRepair } from "./contextNotes";
@@ -40,6 +41,7 @@ const ALLOWED_ACTIONS = new Set<ActionEnvelope["action"]>([
 const ALLOWED_PLANNER_TOOLS = new Set<PlannerTool>([
   "none",
   "git_status",
+  "gateway_health",
   "git_diff",
   "read_file",
   "list_directory",
@@ -97,6 +99,7 @@ interface AgentRuntimeDeps {
   } | undefined;
   collectBaseline(ctx: ToolContext): Promise<GitBaselineObservation>;
   gitStatus(ctx: ToolContext): Promise<ToolResult>;
+  gatewayHealth?(ctx: ToolContext): Promise<ToolResult>;
   gitDiff(ctx: ToolContext): Promise<ToolResult>;
   gitDiffForPath(ctx: ToolContext, relativePath: string): Promise<ToolResult>;
   gitShowHeadFileExact?(ctx: ToolContext, relativePath: string): Promise<ToolResult>;
@@ -973,6 +976,17 @@ function isSafeWorkspaceStatusFallbackRequest(prompt: string): boolean {
     return false;
   }
   return /\b(workspace status|repo status|repository status|dirty state|git status|branch|head|status)\b/.test(normalized);
+}
+
+function isFullWorkspaceStatusRequest(prompt: string): boolean {
+  const normalized = prompt.toLowerCase();
+  if (!isSafeWorkspaceStatusFallbackRequest(prompt)) {
+    return false;
+  }
+  const asksPackage = /\bpackage\.json\b|\bpackage version\b|\bversion from package\.json\b/.test(normalized);
+  const asksGateway = /\bgateway health\b|127\.0\.0\.1:8089\/health|\/health\b|\bselectedmodel\b|\bselected model\b|\bcloud fallback\b/.test(normalized);
+  const asksFully = /\binspect workspace status fully\b|\bworkspace status fully\b|\bstatus fully\b/.test(normalized);
+  return asksFully || (asksPackage && asksGateway);
 }
 
 function extractExactGitDiffPath(prompt: string): string | undefined {
@@ -7038,7 +7052,7 @@ function buildPatchApplySuccessFinal(
 function createSafeWorkspaceStatusFallbackPlan(): PlannerDecision {
   return {
     intent: "agent_task",
-    summary: "Collect read-only workspace git status.",
+    summary: "Collect read-only workspace status including git, package version, and gateway health evidence.",
     needsTools: true,
     plan: [
       {
@@ -7047,9 +7061,23 @@ function createSafeWorkspaceStatusFallbackPlan(): PlannerDecision {
         args: {},
         reason: "Workspace status requires branch, HEAD, and dirty-state evidence.",
         risk: "low"
+      },
+      {
+        step: "Read workspace package.json for package version evidence.",
+        tool: "read_file",
+        args: { path: "package.json" },
+        reason: "Workspace status fully requires package version evidence from package.json when present.",
+        risk: "low"
+      },
+      {
+        step: "Check gateway health endpoint for selected model and fallback exposure evidence.",
+        tool: "gateway_health",
+        args: {},
+        reason: "Workspace status fully requires gateway health evidence at /health.",
+        risk: "low"
       }
     ],
-    stopCondition: "When branch, HEAD, and dirty-state evidence are captured."
+    stopCondition: "When git status, package version, gateway health, selected model, and cloud fallback exposure evidence are captured."
   };
 }
 
@@ -7194,6 +7222,13 @@ function validatePlannerSemantics(prompt: string, decision: PlannerDecision): vo
     if (decision.needsTools && nonNoneTools.length === 0) {
       throw new Error("PLANNER_SEMANTIC_INVALID: NEEDSTOOLS_TRUE_WITHOUT_TOOLS");
     }
+    if (isFullWorkspaceStatusRequest(prompt)) {
+      const tools = new Set(nonNoneTools.map((step) => step.tool));
+      const hasRequiredTools = tools.has("git_status") && tools.has("read_file") && tools.has("gateway_health");
+      if (!hasRequiredTools) {
+        throw new Error("PLANNER_SEMANTIC_INVALID: FULL_WORKSPACE_STATUS_FIELDS_MISSING");
+      }
+    }
   }
 }
 
@@ -7258,8 +7293,8 @@ async function parsePlannerDecisionWithSingleRepair(
           `Original user request:\n${prompt}`,
           `Invalid planner output:\n${raw}`,
           `Validation failure:\n${message}`,
-          "Available tools: none, git_status, git_diff, read_file, list_directory, text_search, run_command, validate, propose_patch.",
-          "Requirements: casual_response must have no tools and a non-empty response; blocked must have a real blockReason; agent_task for workspace evidence must include at least one executable non-none tool.",
+          "Available tools: none, git_status, gateway_health, git_diff, read_file, list_directory, text_search, run_command, validate, propose_patch.",
+          "Requirements: casual_response must have no tools and a non-empty response; blocked must have a real blockReason; agent_task for workspace evidence must include at least one executable non-none tool; full workspace status requests must include git_status, read_file(path=package.json), and gateway_health.",
           "JSON only. No markdown. No prose."
         ].join("\n\n")
       }
@@ -7279,6 +7314,7 @@ function createRuntimeDeps(config: AgentConfig, model: string): AgentRuntimeDeps
     getLastModelInvocationDiagnostics: () => provider.getLastInvocationDiagnostics(),
     collectBaseline: (ctx) => collectGitBaselineTool(ctx),
     gitStatus: (ctx) => gitStatusTool(ctx),
+    gatewayHealth: (ctx) => defaultGatewayHealthTool(ctx),
     gitDiff: (ctx) => gitDiffTool(ctx),
     gitDiffForPath: (ctx, relativePath) => gitDiffForPathTool(ctx, relativePath),
     gitShowHeadFileExact: (ctx, relativePath) => gitShowHeadFileExactTool(ctx, relativePath, AYLA_GUARDED_TARGET_FILE),
@@ -7295,6 +7331,44 @@ function createRuntimeDeps(config: AgentConfig, model: string): AgentRuntimeDeps
     runProductionTests: (workspaceRoot, relativeTestRunnerPath) => defaultRunProductionTests(workspaceRoot, relativeTestRunnerPath, config.commandTimeoutMs),
     runProductionCommand: (workspaceRoot, command) => defaultRunProductionCommand(workspaceRoot, command, config.commandTimeoutMs)
   };
+}
+
+async function defaultGatewayHealthTool(ctx: ToolContext): Promise<ToolResult> {
+  const baseUrl = (ctx.config.gatewayBaseUrl || "http://127.0.0.1:8089").replace(/\/$/, "");
+  const url = `${baseUrl}/health`;
+  try {
+    const response = await fetch(url, { method: "GET", headers: { Accept: "application/json" } });
+    const body = await response.text();
+    if (!response.ok) {
+      return {
+        decision: "ALLOWED_READ_ONLY",
+        output: `GATEWAY_UNREACHABLE:http_status:HTTP_${response.status}`,
+        command: `GET ${url}`,
+        cwd: ctx.workspaceRoot,
+        truncated: false,
+        exitCode: 1
+      };
+    }
+    return {
+      decision: "ALLOWED_READ_ONLY",
+      output: body || "{}",
+      command: `GET ${url}`,
+      cwd: ctx.workspaceRoot,
+      truncated: false,
+      exitCode: 0
+    };
+  } catch (error) {
+    const failureType = classifyGatewayFailureType(error);
+    const message = error instanceof Error ? error.message : "UNKNOWN_GATEWAY_ERROR";
+    return {
+      decision: "ALLOWED_READ_ONLY",
+      output: `GATEWAY_UNREACHABLE:${failureType}:${message}`,
+      command: `GET ${url}`,
+      cwd: ctx.workspaceRoot,
+      truncated: false,
+      exitCode: 1
+    };
+  }
 }
 
 async function runApprovalBoundaryProposal(
@@ -7744,6 +7818,8 @@ function buildEvidenceBackedFinal(message: string | undefined, observations: Obs
   const diffObservation = observations.find((entry) => entry.tool === "git_diff");
   const readObservation = observations.find((entry) => entry.tool === "read_file");
   const searchObservation = observations.find((entry) => entry.tool === "text_search");
+  const packageObservation = observations.find((entry) => entry.tool === "read_file" && entry.details.some((line) => line === "read_file_path: package.json"));
+  const gatewayObservation = observations.find((entry) => entry.tool === "gateway_health");
   const filesRead = observations.flatMap((entry) => entry.filesRead ?? []);
   const toolsUsed = Array.from(new Set(observations.map((entry) => entry.tool)));
   const dirtyState = (baselineMap.get("git_status_clean") ?? "false") === "true" ? "clean" : "dirty";
@@ -7763,6 +7839,33 @@ function buildEvidenceBackedFinal(message: string | undefined, observations: Obs
   const searchExcerpt = sanitizeVisibleOutput(searchOutput || "NO_MATCHES", 240).replace(/\s+/g, " ").trim();
   const searchMatchCount = searchOutput && searchOutput !== "NO_MATCHES" ? searchOutput.split(/\r?\n/).filter((line) => line.trim().length > 0).length : 0;
   const searchConfirmsTools = /\btools\s*:/.test(searchOutput) ? "yes" : searchObservation ? "unknown" : "unknown";
+  const packageRaw = packageObservation?.details.find((line) => line.startsWith("read_file_output: "))?.slice("read_file_output: ".length) ?? "PACKAGE_JSON_NOT_INSPECTED";
+  let packageVersion = "UNKNOWN_NOT_EXPOSED";
+  if (packageRaw === "PACKAGE_JSON_NOT_FOUND") {
+    packageVersion = "PACKAGE_JSON_NOT_FOUND";
+  } else if (packageRaw !== "PACKAGE_JSON_NOT_INSPECTED") {
+    try {
+      const parsed = JSON.parse(packageRaw) as Record<string, unknown>;
+      packageVersion = typeof parsed.version === "string" && parsed.version.trim().length > 0
+        ? parsed.version
+        : "UNKNOWN_NOT_EXPOSED";
+    } catch {
+      packageVersion = "PACKAGE_JSON_PARSE_FAILED";
+    }
+  }
+
+  const gatewayMap = new Map(
+    (gatewayObservation?.details ?? [])
+      .map((line) => {
+        const separator = line.indexOf(": ");
+        return separator >= 0 ? [line.slice(0, separator), line.slice(separator + 2)] as const : undefined;
+      })
+      .filter((entry): entry is readonly [string, string] => Boolean(entry))
+  );
+  const gatewayHealth = gatewayMap.get("gateway_health_status") ?? "UNKNOWN_NOT_INSPECTED";
+  const gatewaySelectedModel = gatewayMap.get("gateway_selected_model") ?? "UNKNOWN_NOT_EXPOSED";
+  const gatewayCloudFallback = gatewayMap.get("gateway_cloud_fallback") ?? "UNKNOWN_NOT_EXPOSED";
+  const gatewayHealthUrl = gatewayMap.get("gateway_health_url") ?? "http://127.0.0.1:8089/health";
 
   return {
     action: "final",
@@ -7778,6 +7881,10 @@ function buildEvidenceBackedFinal(message: string | undefined, observations: Obs
       `- HEAD: ${baselineMap.get("HEAD") ?? "not inspected"}`,
       `- git status clean/dirty: ${dirtyState}`,
       `- modified files: ${modifiedFiles}`,
+      `- package version (package.json): ${packageVersion}`,
+      `- gateway health (${gatewayHealthUrl}): ${gatewayHealth}`,
+      `- selectedModel: ${gatewaySelectedModel}`,
+      `- cloud fallback status: ${gatewayCloudFallback}`,
       `- diff inspected: ${diffInspected}`,
       `- diff target path: ${diffTarget}`,
       `- high-level diff summary: ${diffSummary}`,
@@ -8157,6 +8264,56 @@ export async function runBoundedAgent(
         emit("observation", renderObservationTrace(`branch=${baseline.branch}\nHEAD=${baseline.head}\nstatus=${baseline.statusPorcelain || "CLEAN"}`, false, 0, index + 1 < planner.plan.length ? "Continue with the next planned step." : planner.stopCondition, config.showCommandOutput, config.maxTraceOutputBytes));
         continue;
       }
+      case "gateway_health": {
+        const result = runtimeDeps.gatewayHealth
+          ? await runtimeDeps.gatewayHealth(toolCtx)
+          : await defaultGatewayHealthTool(toolCtx);
+        emit("tool_selected", renderToolTrace(index + 1, step, result.decision, result.command, result.cwd, config.showModelActionJson));
+        if (result.decision !== "ALLOWED_READ_ONLY") {
+          emit("blocked", renderBlockedTrace("gateway_health", `POLICY_${result.decision}`, "Use read-only gateway health checks only."));
+          return { action: "blocked", message: `POLICY_${result.decision}` };
+        }
+
+        let gatewayStatus = "UNKNOWN";
+        let selectedModel = "UNKNOWN_NOT_EXPOSED";
+        let cloudFallback = "UNKNOWN_NOT_EXPOSED";
+        if (result.output.startsWith("GATEWAY_UNREACHABLE:")) {
+          gatewayStatus = result.output;
+        } else {
+          try {
+            const parsed = JSON.parse(result.output) as Record<string, unknown>;
+            gatewayStatus = String(parsed.status ?? "ok");
+            selectedModel = typeof parsed.selectedModel === "string" && parsed.selectedModel.trim().length > 0
+              ? parsed.selectedModel
+              : "UNKNOWN_NOT_EXPOSED";
+            const cloudFallbackValue = (parsed as { cloudFallbackUsed?: unknown }).cloudFallbackUsed;
+            cloudFallback = typeof cloudFallbackValue === "boolean"
+              ? (cloudFallbackValue ? "yes" : "no")
+              : "UNKNOWN_NOT_EXPOSED";
+          } catch {
+            gatewayStatus = "GATEWAY_HEALTH_PARSE_FAILED";
+          }
+        }
+
+        observations.push({
+          tool: "gateway_health",
+          policyDecision: result.decision,
+          summary: "Gateway health captured.",
+          details: [
+            `gateway_health_url: ${(config.gatewayBaseUrl || "http://127.0.0.1:8089").replace(/\/$/, "")}/health`,
+            `gateway_health_status: ${gatewayStatus}`,
+            `gateway_selected_model: ${selectedModel}`,
+            `gateway_cloud_fallback: ${cloudFallback}`,
+            `gateway_health_output: ${result.output}`
+          ],
+          command: result.command,
+          cwd: result.cwd,
+          truncated: result.truncated,
+          exitCode: result.exitCode
+        });
+        emit("observation", renderObservationTrace(result.output || "NO_GATEWAY_HEALTH", result.truncated, result.exitCode, index + 1 < planner.plan.length ? "Continue with the next planned step." : planner.stopCondition, config.showCommandOutput, config.maxTraceOutputBytes));
+        continue;
+      }
       case "git_diff": {
         const targetPath = plannedGitDiffPath(step);
         if (!targetPath) {
@@ -8197,7 +8354,24 @@ export async function runBoundedAgent(
         if (!targetPath) {
           return { action: "blocked", message: "READ_FILE_PATH_REQUIRED" };
         }
-        const result = await runtimeDeps.readFile(toolCtx, targetPath);
+        let result: ToolResult;
+        try {
+          result = await runtimeDeps.readFile(toolCtx, targetPath);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "READ_FILE_FAILED";
+          const isPackageJson = targetPath.replace(/\\/g, "/") === "package.json";
+          if (isPackageJson && /enoent|no such file/i.test(message)) {
+            result = {
+              decision: "ALLOWED_READ_ONLY",
+              output: "PACKAGE_JSON_NOT_FOUND",
+              cwd: toolCtx.workspaceRoot,
+              truncated: false,
+              exitCode: 0
+            };
+          } else {
+            return { action: "blocked", message: `READ_FILE_FAILED:${message}` };
+          }
+        }
         emit("tool_selected", renderToolTrace(index + 1, step, result.decision, result.command, result.cwd, config.showModelActionJson));
         if (result.decision !== "ALLOWED_READ_ONLY") {
           emit("blocked", renderBlockedTrace("read_file", `POLICY_${result.decision}`, "Use a safer workspace-relative path."));

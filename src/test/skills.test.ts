@@ -15,12 +15,16 @@ test("skills registry contains required initial skills", () => {
   ]);
 });
 
-test("workspace_status_skill maps to git_status", () => {
-  const selection = selectSkillForPlannerDecision("check status", {
+test("workspace_status_skill maps to full status tools", () => {
+  const selection = selectSkillForPlannerDecision("inspect workspace status fully", {
     intent: "agent_task",
     summary: "status",
     needsTools: true,
-    plan: [{ step: "status", tool: "git_status", reason: "Need status", risk: "low" }],
+    plan: [
+      { step: "status", tool: "git_status", reason: "Need status", risk: "low" },
+      { step: "package", tool: "read_file", reason: "Need package version", risk: "low", args: { path: "package.json" } },
+      { step: "gateway", tool: "gateway_health", reason: "Need gateway health", risk: "low" }
+    ],
     stopCondition: "done"
   });
   assert.equal(selection?.skill.name, "workspace_status_skill");
@@ -101,17 +105,21 @@ test("patch_proposal_skill maps guarded proposal-only phrasing", () => {
 });
 
 test("skill trace includes skill name and tools used", () => {
-  const selection = selectSkillForPlannerDecision("check status", {
+  const selection = selectSkillForPlannerDecision("inspect workspace status fully", {
     intent: "agent_task",
     summary: "status",
     needsTools: true,
-    plan: [{ step: "status", tool: "git_status", reason: "Need status", risk: "low" }],
+    plan: [
+      { step: "status", tool: "git_status", reason: "Need status", risk: "low" },
+      { step: "package", tool: "read_file", reason: "Need package version", risk: "low", args: { path: "package.json" } },
+      { step: "gateway", tool: "gateway_health", reason: "Need gateway health", risk: "low" }
+    ],
     stopCondition: "done"
   });
   assert.ok(selection);
   const trace = renderSkillTrace(selection);
   assert.match(trace, /Skill selected: workspace_status_skill/);
-  assert.match(trace, /Tools planned: git_status/);
+  assert.match(trace, /Tools planned: git_status, read_file, gateway_health/);
 });
 
 test("unsafe broad scoped skill requests are not mapped to safe skills", () => {
