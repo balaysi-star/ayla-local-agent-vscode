@@ -1,4 +1,4 @@
-﻿import * as crypto from "crypto";
+import * as crypto from "crypto";
 import * as cp from "child_process";
 import * as fs from "fs/promises";
 import * as path from "path";
