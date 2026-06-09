@@ -115,6 +115,8 @@ interface AgentRuntimeDeps {
   runProductionCompile?(workspaceRoot: string, relativeTsconfigPath: string): Promise<ToolResult>;
   runProductionTests?(workspaceRoot: string, relativeTestRunnerPath: string): Promise<ToolResult>;
   runProductionCommand?(workspaceRoot: string, command: string): Promise<ToolResult>;
+  runLocalEngineerCommand?(workspaceRoot: string, command: string): Promise<ToolResult>;
+  executeLocalEngineerFront?(ctx: ToolContext, front: string, scope: string[]): Promise<LocalEngineerFrontExecutionResult>;
 }
 
 interface AgentPatchSession {
@@ -173,6 +175,11 @@ const PRODUCTION_EXECUTION_MODE = "AYLA_MODEL_PRODUCTION_EXECUTION_WITH_GIT_GUAR
 const LOCAL_MODEL_FREE_WORK_SESSION_DIAGNOSTIC_MODE = "LOCAL_MODEL_FREE_WORK_SESSION_DIAGNOSTIC";
 const AYLA_ENGINEERING_AGENT_WORKFLOW = "AYLA_ENGINEERING_AGENT_WORKFLOW";
 const CODEX_STYLE_WORK_SESSION_ENGINE = "CODEX_STYLE_WORK_SESSION_ENGINE";
+const LOCAL_ENGINEER_EXECUTION_MODE_TOKEN = "LOCAL_ENGINEER_EXECUTION_MODE";
+const LOCAL_ENGINEER_FRONT_PLANNER_SCHEMA_RELIABILITY = "PLANNER_SCHEMA_RELIABILITY_FOR_KNOWN_INTENTS";
+const LOCAL_ENGINEER_ALLOWED_FRONTS = new Set<string>([
+  LOCAL_ENGINEER_FRONT_PLANNER_SCHEMA_RELIABILITY
+]);
 
 const PRODUCTION_COMMAND_ALLOWLIST = [
   "git branch --show-current",
@@ -199,6 +206,318 @@ function isLocalModelFreeWorkSessionDiagnosticPrompt(prompt: string): boolean {
   const normalized = prompt.toLowerCase();
   return /\blocal model free work session diagnostic\b/.test(normalized)
     || /\bfree work session diagnostic\b/.test(normalized);
+}
+
+interface LocalEngineerExecutionRequest {
+  front: string;
+  scope: string[];
+  tests: string[];
+}
+
+interface LocalEngineerFrontExecutionResult {
+  verdict: "NO_CHANGES_REQUIRED" | "CHANGES_APPLIED" | "BLOCKED";
+  changedFiles: string[];
+  blockers: string[];
+}
+
+function isLocalEngineerExecutionModePrompt(prompt: string): boolean {
+  return /^\s*LOCAL_ENGINEER_EXECUTION_MODE\b/.test(prompt);
+}
+
+function parseLocalEngineerExecutionRequest(prompt: string): LocalEngineerExecutionRequest | { error: string } {
+  const lines = prompt
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  if (lines.length === 0 || lines[0] !== LOCAL_ENGINEER_EXECUTION_MODE_TOKEN) {
+    return { error: "LOCAL_ENGINEER_EXECUTION_MODE_TOKEN_MISSING_OR_NOT_EXACT" };
+  }
+  const frontLine = lines.find((line) => /^Front\s*:/i.test(line));
+  const scopeLine = lines.find((line) => /^Scope\s*:/i.test(line));
+  const testsLine = lines.find((line) => /^Tests\s*:/i.test(line));
+  if (!frontLine) {
+    return { error: "LOCAL_ENGINEER_FRONT_REQUIRED" };
+  }
+  if (!scopeLine) {
+    return { error: "LOCAL_ENGINEER_SCOPE_REQUIRED" };
+  }
+  if (!testsLine) {
+    return { error: "LOCAL_ENGINEER_TESTS_REQUIRED" };
+  }
+
+  const front = frontLine.replace(/^Front\s*:/i, "").trim();
+  const scope = scopeLine
+    .replace(/^Scope\s*:/i, "")
+    .split(/[;,]/)
+    .map((entry) => entry.trim().replace(/\\/g, "/").replace(/^\.\//, ""))
+    .filter((entry) => entry.length > 0);
+  const tests = testsLine
+    .replace(/^Tests\s*:/i, "")
+    .split(/[;,]/)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+
+  if (!front) {
+    return { error: "LOCAL_ENGINEER_FRONT_REQUIRED" };
+  }
+  if (scope.length === 0) {
+    return { error: "LOCAL_ENGINEER_SCOPE_REQUIRED" };
+  }
+  if (tests.length === 0) {
+    return { error: "LOCAL_ENGINEER_TESTS_REQUIRED" };
+  }
+
+  return { front, scope, tests };
+}
+
+function isPathWithinLocalEngineerScope(relativePath: string, scope: string[]): boolean {
+  const normalizedTarget = relativePath.replace(/\\/g, "/").replace(/^\.\//, "").toLowerCase();
+  return scope.some((entry) => {
+    const normalizedScope = entry.replace(/\\/g, "/").replace(/^\.\//, "").toLowerCase();
+    if (!normalizedScope) {
+      return false;
+    }
+    if (normalizedScope.endsWith("/*")) {
+      const prefix = normalizedScope.slice(0, -2);
+      return normalizedTarget === prefix || normalizedTarget.startsWith(`${prefix}/`);
+    }
+    return normalizedTarget === normalizedScope || normalizedTarget.startsWith(`${normalizedScope}/`);
+  });
+}
+
+async function defaultRunLocalEngineerCommand(workspaceRoot: string, command: string, config: AgentConfig): Promise<ToolResult> {
+  const blockedPatterns = [
+    /\bdocker\b/i,
+    /\bcurl\b/i,
+    /\bwget\b/i,
+    /\binvoke-webrequest\b/i,
+    /\bhttp:\/\//i,
+    /\bhttps:\/\//i,
+    /\bnpm\s+install\b/i,
+    /\byarn\s+add\b/i,
+    /\bpnpm\s+add\b/i,
+    /\bgit\s+push\b/i
+  ];
+  if (blockedPatterns.some((pattern) => pattern.test(command))) {
+    return {
+      decision: "BLOCKED",
+      output: "LOCAL_ENGINEER_COMMAND_BLOCKED",
+      command,
+      cwd: workspaceRoot,
+      truncated: false,
+      exitCode: 1
+    };
+  }
+
+  try {
+    const output = await execPromise(command, workspaceRoot, config.commandTimeoutMs);
+    return {
+      decision: "ALLOWED_READ_ONLY",
+      output: output || "OK",
+      command,
+      cwd: workspaceRoot,
+      truncated: false,
+      exitCode: 0
+    };
+  } catch (error) {
+    return {
+      decision: "BLOCKED",
+      output: error instanceof Error ? error.message : "COMMAND_FAILED",
+      command,
+      cwd: workspaceRoot,
+      truncated: false,
+      exitCode: 1
+    };
+  }
+}
+
+function applyPlannerSchemaReliabilityKnownIntentPatch(source: string): { content: string; changed: boolean } {
+  let changed = false;
+  let content = source;
+
+  const diffGuardOld = "if (!/\\bgit diff\\b/.test(normalized) || !/\\bgit status\\b/.test(normalized)) {";
+  const diffGuardNew = "if (!/\\bgit diff\\b/.test(normalized)) {";
+  if (content.includes(diffGuardOld)) {
+    content = content.replace(diffGuardOld, diffGuardNew);
+    changed = true;
+  }
+
+  const statusRegexOld = "/\\b(workspace status|repo status|repository status|dirty state|git status|branch|head|status)\\b/";
+  const statusRegexNew = "/\\b(workspace status|repo status|repository status|dirty state|git status|branch|head|full workspace status)\\b/";
+  if (content.includes(statusRegexOld)) {
+    content = content.replace(statusRegexOld, statusRegexNew);
+    changed = true;
+  }
+
+  return { content, changed };
+}
+
+async function executeLocalEngineerFront(
+  front: string,
+  workspaceRoot: string,
+  scope: string[]
+): Promise<LocalEngineerFrontExecutionResult> {
+  if (!LOCAL_ENGINEER_ALLOWED_FRONTS.has(front)) {
+    return { verdict: "BLOCKED", changedFiles: [], blockers: ["LOCAL_ENGINEER_FRONT_UNKNOWN"] };
+  }
+
+  if (front === LOCAL_ENGINEER_FRONT_PLANNER_SCHEMA_RELIABILITY) {
+    const target = "src/agent.ts";
+    if (!isPathWithinLocalEngineerScope(target, scope)) {
+      return { verdict: "BLOCKED", changedFiles: [], blockers: ["LOCAL_ENGINEER_SCOPE_BLOCKED_TARGET"] };
+    }
+    const absoluteTarget = path.join(workspaceRoot, target);
+    const existing = await fs.readFile(absoluteTarget, "utf8");
+    const patched = applyPlannerSchemaReliabilityKnownIntentPatch(existing);
+    if (!patched.changed) {
+      return { verdict: "NO_CHANGES_REQUIRED", changedFiles: [], blockers: [] };
+    }
+    await fs.writeFile(absoluteTarget, patched.content, "utf8");
+    return { verdict: "CHANGES_APPLIED", changedFiles: [target], blockers: [] };
+  }
+
+  return { verdict: "BLOCKED", changedFiles: [], blockers: ["LOCAL_ENGINEER_FRONT_UNKNOWN"] };
+}
+
+async function runLocalEngineerExecutionMode(
+  config: AgentConfig,
+  prompt: string,
+  workspaceRoot: string | undefined,
+  runtimeDeps: AgentRuntimeDeps
+): Promise<ActionEnvelope> {
+  if (!workspaceRoot) {
+    return { action: "blocked", message: "WORKSPACE_REQUIRED" };
+  }
+
+  const parsed = parseLocalEngineerExecutionRequest(prompt);
+  if ("error" in parsed) {
+    return { action: "blocked", message: parsed.error };
+  }
+
+  const { front, scope, tests } = parsed;
+  if (!LOCAL_ENGINEER_ALLOWED_FRONTS.has(front)) {
+    return { action: "blocked", message: "LOCAL_ENGINEER_FRONT_UNKNOWN" };
+  }
+
+  const toolCtx: ToolContext = { workspaceRoot, config };
+  const frontExecution = runtimeDeps.executeLocalEngineerFront
+    ? await runtimeDeps.executeLocalEngineerFront(toolCtx, front, scope)
+    : await executeLocalEngineerFront(front, workspaceRoot, scope);
+
+  const scopeViolations = frontExecution.changedFiles.filter((relativePath) => !isPathWithinLocalEngineerScope(relativePath, scope));
+  if (scopeViolations.length > 0) {
+    return {
+      action: "final",
+      message: sanitizeVisibleOutput([
+        "### VERDICT",
+        "LOCAL_ENGINEER_EXECUTION_BLOCKED",
+        "",
+        "### files",
+        frontExecution.changedFiles.length > 0 ? frontExecution.changedFiles.join(", ") : "none",
+        "",
+        "### tests",
+        "not_run",
+        "",
+        "### commit",
+        "none",
+        "",
+        "### blockers",
+        ...scopeViolations.map((pathItem) => `LOCAL_ENGINEER_SCOPE_VIOLATION:${pathItem}`)
+      ].join("\n"), config.maxTraceOutputBytes)
+    };
+  }
+  if (frontExecution.verdict === "BLOCKED") {
+    return {
+      action: "final",
+      message: sanitizeVisibleOutput([
+        "### VERDICT",
+        "LOCAL_ENGINEER_EXECUTION_BLOCKED",
+        "",
+        "### files",
+        "none",
+        "",
+        "### tests",
+        "not_run",
+        "",
+        "### commit",
+        "none",
+        "",
+        "### blockers",
+        ...(frontExecution.blockers.length > 0 ? frontExecution.blockers : ["unknown"])
+      ].join("\n"), config.maxTraceOutputBytes)
+    };
+  }
+
+  const runCommand = runtimeDeps.runLocalEngineerCommand
+    ? (command: string) => runtimeDeps.runLocalEngineerCommand!(workspaceRoot, command)
+    : (command: string) => defaultRunLocalEngineerCommand(workspaceRoot, command, config);
+
+  const testResults: string[] = [];
+  let testsPassed = true;
+  for (const testCommand of tests) {
+    const result = await runCommand(testCommand);
+    const line = `${testCommand} => ${result.exitCode === 0 ? "pass" : "fail"}`;
+    testResults.push(line);
+    if (result.exitCode !== 0 || result.decision !== "ALLOWED_READ_ONLY") {
+      testsPassed = false;
+      break;
+    }
+  }
+
+  let commitSha = "none";
+  const blockers: string[] = [];
+  if (testsPassed && frontExecution.changedFiles.length > 0) {
+    for (const changedFile of frontExecution.changedFiles) {
+      const addResult = await runCommand(`git add -- ${changedFile}`);
+      if (addResult.exitCode !== 0 || addResult.decision !== "ALLOWED_READ_ONLY") {
+        blockers.push(`LOCAL_ENGINEER_GIT_ADD_FAILED:${changedFile}`);
+        testsPassed = false;
+        break;
+      }
+    }
+    if (testsPassed) {
+      const commitMessage = `LOCAL_ENGINEER_EXECUTION_MODE: ${front}`;
+      const commitResult = await runCommand(`git commit -m "${commitMessage.replace(/"/g, "\\\"")}"`);
+      if (commitResult.exitCode !== 0 || commitResult.decision !== "ALLOWED_READ_ONLY") {
+        blockers.push("LOCAL_ENGINEER_COMMIT_FAILED");
+      } else {
+        const headResult = await runCommand("git rev-parse HEAD");
+        if (headResult.exitCode === 0 && headResult.decision === "ALLOWED_READ_ONLY") {
+          commitSha = (headResult.output || "").trim() || "unknown";
+        } else {
+          commitSha = "unknown";
+        }
+      }
+    }
+  } else if (!testsPassed) {
+    blockers.push("LOCAL_ENGINEER_TESTS_FAILED");
+  }
+
+  const verdict = blockers.length > 0
+    ? "LOCAL_ENGINEER_EXECUTION_BLOCKED"
+    : frontExecution.changedFiles.length > 0
+      ? "LOCAL_ENGINEER_EXECUTION_COMMITTED"
+      : "LOCAL_ENGINEER_EXECUTION_NO_CHANGES";
+
+  return {
+    action: "final",
+    message: sanitizeVisibleOutput([
+      "### VERDICT",
+      verdict,
+      "",
+      "### files",
+      frontExecution.changedFiles.length > 0 ? frontExecution.changedFiles.join(", ") : "none",
+      "",
+      "### tests",
+      ...(testResults.length > 0 ? testResults : ["not_run"]),
+      "",
+      "### commit",
+      commitSha,
+      "",
+      "### blockers",
+      ...(blockers.length > 0 ? blockers : ["none"])
+    ].join("\n"), config.maxTraceOutputBytes)
+  };
 }
 
 function escapeRegExp(text: string): string {
@@ -8383,6 +8702,10 @@ export async function runBoundedAgent(
 
   if (workspaceRoot && taskClass === "readiness_diagnostic") {
     return runGatewayReadinessDiagnostic(config, prompt, workspaceRoot, runtimeDeps, emit);
+  }
+
+  if (isLocalEngineerExecutionModePrompt(prompt)) {
+    return runLocalEngineerExecutionMode(config, prompt, workspaceRoot, runtimeDeps);
   }
 
   if (workspaceRoot && isLocalModelFreeWorkSessionDiagnosticPrompt(prompt) && taskClass !== "readiness_diagnostic" && taskClass !== "unsafe_or_disallowed") {

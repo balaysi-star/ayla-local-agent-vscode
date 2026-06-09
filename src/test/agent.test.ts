@@ -75,6 +75,55 @@ function createLogger(): Logger {
   } as unknown as Logger;
 }
 
+function localEngineerPrompt(options?: {
+  front?: string;
+  scope?: string;
+  tests?: string;
+}): string {
+  const lines = [
+    "LOCAL_ENGINEER_EXECUTION_MODE"
+  ];
+  if (options?.front !== undefined) {
+    lines.push(`Front: ${options.front}`);
+  }
+  if (options?.scope !== undefined) {
+    lines.push(`Scope: ${options.scope}`);
+  }
+  if (options?.tests !== undefined) {
+    lines.push(`Tests: ${options.tests}`);
+  }
+  return lines.join("\n");
+}
+
+function createLocalEngineerRuntimeDeps(overrides?: Record<string, unknown>): Record<string, unknown> {
+  return {
+    runModel: async () => "{\"intent\":\"agent_task\",}",
+    collectBaseline: async () => ({
+      branch: "main",
+      head: "abc123",
+      statusPorcelain: "",
+      clean: true,
+      toolsUsed: []
+    }),
+    gitStatus: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+    gitDiff: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+    gitDiffForPath: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+    listDirectory: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+    readFile: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+    textSearch: async () => ({ decision: "ALLOWED_READ_ONLY", output: "" }),
+    executeLocalEngineerFront: async () => ({ verdict: "NO_CHANGES_REQUIRED", changedFiles: [], blockers: [] }),
+    runLocalEngineerCommand: async (_workspaceRoot: string, command: string) => ({
+      decision: "ALLOWED_READ_ONLY",
+      output: `${command} ok`,
+      command,
+      cwd: "D:\\repo",
+      truncated: false,
+      exitCode: 0
+    }),
+    ...overrides
+  };
+}
+
 function buildStructuredProofProposal(options?: {
   tsPath?: string;
   testPath?: string;
@@ -875,6 +924,205 @@ test("planner invalid JSON blocks safely", async () => {
   assert.equal(collectBaselineCalled, 1);
   assert.equal(result.action, "final");
   assert.match(result.message ?? "", /branch: main/);
+});
+
+test("LOCAL_ENGINEER_EXECUTION_MODE bypasses planner", async () => {
+  let runModelCalled = 0;
+  const result = await runBoundedAgent(
+    baseConfig,
+    "model",
+    localEngineerPrompt({
+      front: "PLANNER_SCHEMA_RELIABILITY_FOR_KNOWN_INTENTS",
+      scope: "src/agent.ts",
+      tests: "npm.cmd run compile; npm.cmd test"
+    }),
+    createLogger(),
+    "D:\\repo",
+    createLocalEngineerRuntimeDeps({
+      runModel: async () => {
+        runModelCalled += 1;
+        throw new Error("planner should not run");
+      }
+    }) as never
+  );
+
+  assert.equal(runModelCalled, 0);
+  assert.equal(result.action, "final");
+  assert.match(result.message ?? "", /### VERDICT/);
+  assert.doesNotMatch(result.message ?? "", /PLANNER_SCHEMA_INVALID/);
+});
+
+test("LOCAL_ENGINEER_EXECUTION_MODE blocks when Front is missing", async () => {
+  const result = await runBoundedAgent(
+    baseConfig,
+    "model",
+    localEngineerPrompt({
+      scope: "src/agent.ts",
+      tests: "npm.cmd test"
+    }),
+    createLogger(),
+    "D:\\repo",
+    createLocalEngineerRuntimeDeps() as never
+  );
+
+  assert.equal(result.action, "blocked");
+  assert.equal(result.message, "LOCAL_ENGINEER_FRONT_REQUIRED");
+});
+
+test("LOCAL_ENGINEER_EXECUTION_MODE blocks when Scope is missing", async () => {
+  const result = await runBoundedAgent(
+    baseConfig,
+    "model",
+    localEngineerPrompt({
+      front: "PLANNER_SCHEMA_RELIABILITY_FOR_KNOWN_INTENTS",
+      tests: "npm.cmd test"
+    }),
+    createLogger(),
+    "D:\\repo",
+    createLocalEngineerRuntimeDeps() as never
+  );
+
+  assert.equal(result.action, "blocked");
+  assert.equal(result.message, "LOCAL_ENGINEER_SCOPE_REQUIRED");
+});
+
+test("LOCAL_ENGINEER_EXECUTION_MODE blocks unknown Front", async () => {
+  const result = await runBoundedAgent(
+    baseConfig,
+    "model",
+    localEngineerPrompt({
+      front: "UNKNOWN_FRONT",
+      scope: "src/agent.ts",
+      tests: "npm.cmd test"
+    }),
+    createLogger(),
+    "D:\\repo",
+    createLocalEngineerRuntimeDeps() as never
+  );
+
+  assert.equal(result.action, "blocked");
+  assert.equal(result.message, "LOCAL_ENGINEER_FRONT_UNKNOWN");
+});
+
+test("LOCAL_ENGINEER_EXECUTION_MODE enforces scoped edits only", async () => {
+  const result = await runBoundedAgent(
+    baseConfig,
+    "model",
+    localEngineerPrompt({
+      front: "PLANNER_SCHEMA_RELIABILITY_FOR_KNOWN_INTENTS",
+      scope: "src/agent.ts",
+      tests: "npm.cmd test"
+    }),
+    createLogger(),
+    "D:\\repo",
+    createLocalEngineerRuntimeDeps({
+      executeLocalEngineerFront: async () => ({
+        verdict: "CHANGES_APPLIED",
+        changedFiles: ["src/agent.ts", "src/outside.ts"],
+        blockers: []
+      })
+    }) as never
+  );
+
+  assert.equal(result.action, "final");
+  assert.match(result.message ?? "", /LOCAL_ENGINEER_EXECUTION_BLOCKED/);
+  assert.match(result.message ?? "", /LOCAL_ENGINEER_SCOPE_VIOLATION:src\/outside\.ts/);
+});
+
+test("LOCAL_ENGINEER_EXECUTION_MODE blocks commit when tests fail", async () => {
+  let commitAttempted = false;
+  const result = await runBoundedAgent(
+    baseConfig,
+    "model",
+    localEngineerPrompt({
+      front: "PLANNER_SCHEMA_RELIABILITY_FOR_KNOWN_INTENTS",
+      scope: "src/agent.ts",
+      tests: "npm.cmd run compile; npm.cmd test"
+    }),
+    createLogger(),
+    "D:\\repo",
+    createLocalEngineerRuntimeDeps({
+      executeLocalEngineerFront: async () => ({
+        verdict: "CHANGES_APPLIED",
+        changedFiles: ["src/agent.ts"],
+        blockers: []
+      }),
+      runLocalEngineerCommand: async (_workspaceRoot: string, command: string) => {
+        if (command.startsWith("git commit")) {
+          commitAttempted = true;
+        }
+        if (command === "npm.cmd test") {
+          return {
+            decision: "BLOCKED",
+            output: "tests failed",
+            command,
+            cwd: "D:\\repo",
+            truncated: false,
+            exitCode: 1
+          };
+        }
+        return {
+          decision: "ALLOWED_READ_ONLY",
+          output: "ok",
+          command,
+          cwd: "D:\\repo",
+          truncated: false,
+          exitCode: 0
+        };
+      }
+    }) as never
+  );
+
+  assert.equal(commitAttempted, false);
+  assert.equal(result.action, "final");
+  assert.match(result.message ?? "", /LOCAL_ENGINEER_EXECUTION_BLOCKED/);
+  assert.match(result.message ?? "", /LOCAL_ENGINEER_TESTS_FAILED/);
+  assert.match(result.message ?? "", /### commit\nnone/);
+});
+
+test("LOCAL_ENGINEER_EXECUTION_MODE commits when tests pass", async () => {
+  const result = await runBoundedAgent(
+    baseConfig,
+    "model",
+    localEngineerPrompt({
+      front: "PLANNER_SCHEMA_RELIABILITY_FOR_KNOWN_INTENTS",
+      scope: "src/agent.ts",
+      tests: "npm.cmd run compile; npm.cmd test"
+    }),
+    createLogger(),
+    "D:\\repo",
+    createLocalEngineerRuntimeDeps({
+      executeLocalEngineerFront: async () => ({
+        verdict: "CHANGES_APPLIED",
+        changedFiles: ["src/agent.ts"],
+        blockers: []
+      }),
+      runLocalEngineerCommand: async (_workspaceRoot: string, command: string) => {
+        if (command === "git rev-parse HEAD") {
+          return {
+            decision: "ALLOWED_READ_ONLY",
+            output: "abc123def456",
+            command,
+            cwd: "D:\\repo",
+            truncated: false,
+            exitCode: 0
+          };
+        }
+        return {
+          decision: "ALLOWED_READ_ONLY",
+          output: "ok",
+          command,
+          cwd: "D:\\repo",
+          truncated: false,
+          exitCode: 0
+        };
+      }
+    }) as never
+  );
+
+  assert.equal(result.action, "final");
+  assert.match(result.message ?? "", /LOCAL_ENGINEER_EXECUTION_COMMITTED/);
+  assert.match(result.message ?? "", /### commit\nabc123def456/);
 });
 
 test("planner invalid JSON for explicit safe diff task falls back to git_status and exact-path git_diff", async () => {
