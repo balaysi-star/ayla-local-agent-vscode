@@ -4,6 +4,7 @@ import { AgentConfig, DefaultNonSlashMode } from "./config";
 import { AYLA_PREFERRED_MODEL_ID, resolveAylaModelId } from "./languageModelBridge";
 import { Logger } from "./logging";
 import { formatStructuredResult } from "./markdown";
+import { getModelWarmupState } from "./modelWarmup";
 import { discoverModels, runChat } from "./ollama";
 import { applyPendingPatch, summarizePatch } from "./patch";
 import { buildSelfImproveStatusReport, collectSelfImproveWorkspaceStatusRuntimeProof, isSelfImprovementPrompt, STATIC_SLASH_COMMANDS, SelfImproveBootstrapMetadata, WorkspaceStatusRuntimeProof } from "./selfImprove";
@@ -160,12 +161,16 @@ export async function handleCommand(
         return helpText();
       case "health": {
         const models = await discoverModels(deps.config);
+        const warmup = getModelWarmupState();
         return buildResult("Health", [
           `Gateway enabled: ${deps.config.gatewayEnabled ? "yes" : "no"}`,
           `Gateway base URL: ${deps.config.gatewayBaseUrl}`,
           `Gateway mode: ${deps.config.gatewayMode}`,
           `Ollama reachable at ${deps.config.ollamaBaseUrl}.`,
-          `Discovered ${models.length} model(s).`
+          `Discovered ${models.length} model(s).`,
+          `Warm-up status: ${warmup.status}`,
+          `Warm-up model: ${warmup.model}`,
+          `Warm-up blocker: ${warmup.blocker}`
         ]);
       }
       case "models": {
@@ -199,6 +204,7 @@ export async function handleCommand(
       }
       case "status": {
         const session = deps.sessions.get(request.sessionId);
+        const warmup = getModelWarmupState();
         return buildResult("Status", [
           `Session: ${request.sessionId}`,
           `Active model: ${(session.activeModel ?? deps.config.activeModel ?? deps.config.defaultModel) || "unset"}`,
@@ -206,7 +212,9 @@ export async function handleCommand(
           `Gateway preferred: ${deps.config.gatewayPreferGateway ? "yes" : "no"}`,
           `Gateway mode: ${deps.config.gatewayMode}`,
           `Pending patch: ${session.pendingPatch ? "yes" : "no"}`,
-          `State: ${session.lastStatus}`
+          `State: ${session.lastStatus}`,
+          `Warm-up status: ${warmup.status}`,
+          `Warm-up model: ${warmup.model}`
         ]);
       }
       case "self-improve": {
