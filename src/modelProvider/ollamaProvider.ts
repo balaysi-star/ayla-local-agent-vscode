@@ -41,6 +41,18 @@ export interface ModelInvocationDiagnostics {
   fallbackMode: "none" | "local-non-stream";
 }
 
+const DEFAULT_MODEL_REQUEST_TIMEOUT_MS = 120000;
+
+type AgentConfigWithModelTimeout = AgentConfig & { modelRequestTimeoutMs?: number };
+
+function resolveModelRequestTimeoutMs(config: AgentConfig): number {
+  const configured = (config as AgentConfigWithModelTimeout).modelRequestTimeoutMs;
+  if (typeof configured === "number" && Number.isFinite(configured) && configured >= 1000) {
+    return configured;
+  }
+  return DEFAULT_MODEL_REQUEST_TIMEOUT_MS;
+}
+
 export class OllamaLocalModelProvider implements LocalModelProvider {
   private readonly client: OllamaClient;
   private readonly selectedModel: string;
@@ -49,7 +61,7 @@ export class OllamaLocalModelProvider implements LocalModelProvider {
   constructor(config: AgentConfig, selectedModel: string) {
     this.client = new OllamaClient({
       baseUrl: config.ollamaBaseUrl,
-      timeoutMs: config.commandTimeoutMs
+      timeoutMs: resolveModelRequestTimeoutMs(config)
     });
     this.selectedModel = selectedModel;
   }
