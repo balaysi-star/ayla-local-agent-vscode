@@ -3,6 +3,7 @@ import { createAylaLanguageModelChatProvider } from "./chatLanguageModelProvider
 import { getConfig } from "./config";
 import { isAylaLanguageModelVendor } from "./languageModelBridge";
 import { Logger } from "./logging";
+import { getModelWarmupState, warmSelectedLocalModel } from "./modelWarmup";
 import { discoverModels } from "./ollama";
 import { parseRequestPayload, requiresWorkspace } from "./requestRouting";
 import { handleCommand } from "./router";
@@ -83,6 +84,10 @@ export function activate(context: vscode.ExtensionContext): void {
   statusBar.command = "aylaLocalAgent.pickModel";
   statusBar.text = "$(sparkle) Ayla: Ready";
   statusBar.show();
+
+  void warmSelectedLocalModel(getLiveConfig(), logger, (text) => {
+    statusBar.text = text;
+  });
 
   const registerLanguageModelChatProvider = (vscode as any).lm?.registerLanguageModelChatProvider;
   let languageModelProviderRegistered = false;
@@ -171,6 +176,9 @@ export function activate(context: vscode.ExtensionContext): void {
         if (picked) {
           sessions.setActiveModel("default", picked.label);
           statusBar.text = `$(sparkle) Ayla: ${picked.label}`;
+          void warmSelectedLocalModel({ ...liveConfig, activeModel: picked.label }, logger, (text) => {
+            statusBar.text = text;
+          });
         }
       } catch (error) {
         vscode.window.showErrorMessage(describeError(error, liveConfig.ollamaBaseUrl));
@@ -180,7 +188,8 @@ export function activate(context: vscode.ExtensionContext): void {
       const liveConfig = getLiveConfig();
       try {
         const models = await discoverModels(liveConfig);
-        vscode.window.showInformationMessage(`Ollama reachable. Models: ${models.length}`);
+        const warmup = getModelWarmupState();
+        vscode.window.showInformationMessage(`Ollama reachable. Models: ${models.length}. Warm-up: ${warmup.status} (${warmup.model}).`);
       } catch (error) {
         vscode.window.showErrorMessage(describeError(error, liveConfig.ollamaBaseUrl));
       }
@@ -188,7 +197,8 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("aylaLocalAgent.showStatus", async () => {
       const session = sessions.get("default");
       const config = getLiveConfig();
-      vscode.window.showInformationMessage(`Model: ${(session.activeModel ?? config.activeModel ?? config.defaultModel) || "unset"} | State: ${session.lastStatus}`);
+      const warmup = getModelWarmupState();
+      vscode.window.showInformationMessage(`Model: ${(session.activeModel ?? config.activeModel ?? config.defaultModel) || "unset"} | State: ${session.lastStatus} | Warm-up: ${warmup.status}`);
     }),
     vscode.commands.registerCommand("aylaLocalAgent.resetSession", async () => {
       sessions.reset("default");
@@ -209,6 +219,7 @@ export function activate(context: vscode.ExtensionContext): void {
       terminal.sendText("npm test");
     }),
     vscode.commands.registerCommand("aylaLocalAgent.activationDiagnostics", async () => {
+      const warmup = getModelWarmupState();
       const diagnostics = [
         "### Ayla Activation Diagnostics",
         `* extension version: ${extensionVersion}`,
@@ -217,7 +228,10 @@ export function activate(context: vscode.ExtensionContext): void {
         `* chat API available: ${typeof createParticipant === "function" ? "yes" : "no"}`,
         `* participant registered: ${participantRegistered ? "yes" : "no"}`,
         `* lm provider API available: ${typeof registerLanguageModelChatProvider === "function" ? "yes" : "no"}`,
-        `* lm provider registered: ${languageModelProviderRegistered ? "yes" : "no"}`
+        `* lm provider registered: ${languageModelProviderRegistered ? "yes" : "no"}`,
+        `* warm-up status: ${warmup.status}`,
+        `* warm-up model: ${warmup.model}`,
+        `* warm-up blocker: ${warmup.blocker}`
       ].join("\n");
       logger.info(diagnostics);
       vscode.window.showInformationMessage("Ayla activation diagnostics written to output channel.");
