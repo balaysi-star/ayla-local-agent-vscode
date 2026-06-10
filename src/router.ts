@@ -81,6 +81,58 @@ function resolveAgentMode(config: AgentConfig, explicitSlash: boolean): DefaultN
   return config.defaultNonSlashMode;
 }
 
+function isLocalAgentWorkspace(workspaceRoot: string): boolean {
+  return workspaceRoot.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase().endsWith("/ayla-local-agent-vscode");
+}
+
+function buildSelfImproveRunPrompt(): string {
+  return [
+    "LOCAL_ENGINEER_EXECUTION_MODE",
+    "Front: LOCAL_ENGINEER_SELF_IMPROVEMENT_V1",
+    "Scope: src/agent.ts",
+    "Tests: npm run compile"
+  ].join("\n");
+}
+
+async function runSelfImproveExecution(deps: RouterDeps, request: RequestContext): Promise<string> {
+  if (!isLocalAgentWorkspace(request.workspaceRoot)) {
+    return buildResult("Self Improve", [
+      "SELF_IMPROVE_AGENT_REPO_REQUIRED",
+      `Workspace: ${request.workspaceRoot || "none"}`,
+      "Expected workspace suffix: ayla-local-agent-vscode"
+    ]);
+  }
+
+  const model = await ensureModel(deps, request.sessionId);
+  const output = await runBoundedAgent(
+    deps.config,
+    model,
+    buildSelfImproveRunPrompt(),
+    deps.logger,
+    request.workspaceRoot,
+    undefined,
+    {
+      activeModel: model,
+      mode: "agent",
+      patchSession: {
+        getPendingPatch: () => deps.sessions.get(request.sessionId).pendingPatch,
+        setPendingPatch: (patch) => deps.sessions.setPendingPatch(request.sessionId, patch),
+        applyPatch: async (patch) => applyPendingPatch(request.workspaceRoot, patch, deps.logger)
+      },
+      onProgress: (event) => {
+        deps.onProgress?.(`\n${event.message}\n`);
+      }
+    }
+  );
+
+  return output.action === "final"
+    ? output.message ?? buildResult("Self Improve", ["No message returned."])
+    : buildResult("Self Improve", [
+      `Action: ${output.action}`,
+      output.message ?? "No message returned."
+    ]);
+}
+
 export async function handleCommand(
   deps: RouterDeps,
   request: RequestContext
@@ -159,8 +211,11 @@ export async function handleCommand(
       }
       case "self-improve": {
         const mode = request.argumentText.trim().toLowerCase();
+        if (mode === "run") {
+          return runSelfImproveExecution(deps, request);
+        }
         if (mode !== "status") {
-          return buildResult("Self Improve", ["Usage: /self-improve status"]);
+          return buildResult("Self Improve", ["Usage: /self-improve status", "Usage: /self-improve run"]);
         }
         const runtimeProof = request.workspaceRoot
           ? await (deps.selfImproveProofCollector
