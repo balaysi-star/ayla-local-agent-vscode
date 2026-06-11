@@ -80,6 +80,12 @@ export interface ContextPackResult {
 
 export interface OutputAdapterResult {
   reasoning_text: string;
+  final_report?: {
+    status: "completed" | "blocked";
+    summary: string;
+    evidence: string[];
+    blockers: string[];
+  };
   response_kind?: "readiness_summary" | "tool_intent" | "freeform";
   readiness_summary?: {
     ready: boolean | "unknown";

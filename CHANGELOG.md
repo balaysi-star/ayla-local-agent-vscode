@@ -1,3 +1,9 @@
+## 0.0.65
+
+- Fixed VSIX packaging to exclude `.env`, `.local`, tests, source maps, and repository-only assets.
+- Preserved structured final-report summary, evidence, and blockers through Gateway, CLI, and VS Code output paths.
+- Added bounded grounding evidence from the last executed tool so final answers retain actual repository facts.
+
 # Change Log
 
 ## 0.0.34

@@ -1,13 +1,44 @@
+# Development and local state
 .vscode/**
 .vscode-extensions/**
 .vscode-user-data/**
 .tmp-vscode-ext/**
 .tmp-vscode-user/**
 .tmp-vscode-*
-src/**
-tsconfig.json
-node_modules/.cache/**
-*.vsix
+.git/**
+.github/**
+.amazonq/**
+.local/**
+.env
+.env.*
+!.env.example
 *.log
-gateway-start.out.txt
-gateway-start.err.txt
+*.vsix
+
+# Source, tests, and build metadata not required at extension runtime
+src/**
+test-fixtures/**
+tsconfig.json
+package-lock.json
+node_modules/**
+out/test/**
+out/**/*.map
+
+# Gateway source and test/build inputs; retain gateway/dist runtime
+gateway/src/**
+gateway/scripts/**
+gateway/training/**
+gateway/runtime/**
+gateway/schemas/**
+gateway/Dockerfile
+gateway/package.json
+gateway/tsconfig.json
+gateway/dist/tests/**
+gateway/dist/**/*.map
+
+# Repository-only launch/install assets
+scripts/**
+bin/**
+docker-compose.local-brain-gateway.yml
+start-ayla-after-model-ready.ps1
+.gitignore

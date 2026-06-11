@@ -130,6 +130,7 @@ export async function handleChatRoute(config: GatewayConfig, client: GatewayOlla
     resolved_model_profile: profile,
     context_pack: contextPack,
     reasoning_text: adapted.reasoning_text,
+    final_report: adapted.final_report,
     response_kind: adapted.response_kind,
     readiness_summary: adapted.readiness_summary,
     normalized_tool_intent: adapted.normalized_tool_intent,

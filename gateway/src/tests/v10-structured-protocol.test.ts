@@ -101,6 +101,13 @@ test("V10 strict loop repairs malformed output before executing a typed tool", a
     assert.match(loop.steps[1].toolResult.observation, /AYLA_TYPED_TOOL_RESULT_V1/);
     assert.match(loop.steps[1].toolResult.observation, /v10 = true/);
     assert.equal(loop.executedToolCount, 1);
+    const report = result.final_report as { status: string; summary: string; evidence: string[]; blockers: string[] };
+    assert.equal(report.status, "completed");
+    assert.equal(report.summary, "Readback confirmed.");
+    assert.ok(report.evidence.some((entry) => /read_file executed/.test(entry)));
+    assert.ok(report.evidence.some((entry) => /v10 = true/.test(entry)));
+    assert.deepEqual(report.blockers, []);
+    assert.equal(result.reasoning_text, "Readback confirmed.");
     const repairTurn = capturedBodies[1].messages?.map((message) => message.content).join("\n") || "";
     assert.match(repairTurn, /TOOL_PROTOCOL_ERROR_V1/);
     assert.match(repairTurn, /Return exactly one valid JSON envelope/);

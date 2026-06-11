@@ -90,12 +90,20 @@ export function normalizeGatewayOutput(
 
   const protocolValid = protocol.valid;
   const missingFields = normalizedToolIntent ? [] : [requireStructured ? "valid_structured_tool_protocol" : "normalized_tool_intent"];
-  const reasoningText = protocol.valid && protocol.envelope
-    ? protocol.envelope.reasoning_summary
-    : compact.text;
+  const finalReport = protocol.valid && protocol.envelope?.kind === "final_report"
+    ? {
+      status: protocol.envelope.final_report.status,
+      summary: protocol.envelope.final_report.summary,
+      evidence: [...(protocol.envelope.final_report.evidence ?? [])],
+      blockers: [...(protocol.envelope.final_report.blockers ?? [])]
+    }
+    : undefined;
+  const reasoningText = finalReport?.summary
+    ?? (protocol.valid && protocol.envelope ? protocol.envelope.reasoning_summary : compact.text);
 
   return {
     reasoning_text: reasoningText,
+    final_report: finalReport,
     response_kind: taskClass === "readiness_diagnostic" && !normalizedToolIntent
       ? "readiness_summary"
       : normalizedToolIntent

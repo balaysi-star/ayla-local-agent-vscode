@@ -102,6 +102,7 @@ export interface GatewayAgentLoopResult {
   resolved_model_profile: GatewayModelProfile;
   final_status: "completed" | "blocked" | "max_steps_reached";
   reasoning_text: string;
+  final_report?: OutputAdapterResult["final_report"];
   response_kind?: OutputAdapterResult["response_kind"];
   normalized_tool_intent?: OutputAdapterResult["normalized_tool_intent"];
   confidence: OutputAdapterResult["confidence"];
@@ -216,6 +217,27 @@ function shouldContinueAfterTool(toolResult: GatewayWorkspaceToolResult, step: n
     return true;
   }
   return true;
+}
+
+function groundFinalReport(
+  report: OutputAdapterResult["final_report"],
+  steps: GatewayAgentLoopStep[]
+): OutputAdapterResult["final_report"] {
+  if (!report) return undefined;
+  const evidence = [...report.evidence];
+  const lastExecuted = [...steps].reverse().find((step) =>
+    step.toolResult.executed
+    && step.toolResult.action !== "final_report"
+    && Boolean(step.toolResult.output?.trim())
+  );
+  if (lastExecuted) {
+    const boundedOutput = lastExecuted.toolResult.output.trim().slice(0, 2400);
+    const grounded = `${lastExecuted.toolResult.action}: ${boundedOutput}`;
+    if (!evidence.some((entry) => entry.includes(boundedOutput.slice(0, 120)))) {
+      evidence.push(grounded);
+    }
+  }
+  return { ...report, evidence };
 }
 
 export async function runGatewayAgentToolLoop(config: GatewayConfig, client: GatewayOllamaClient, input: GatewayAgentLoopInput): Promise<GatewayAgentLoopResult> {
@@ -430,7 +452,10 @@ export async function runGatewayAgentToolLoop(config: GatewayConfig, client: Gat
     await persistWorkSessionKernel(workSession, sourceWorkspaceRoot).catch(() => undefined);
 
     if (invalidStructuredProtocol && protocolRepairAttempts >= maxProtocolRepairAttempts) { finalStatus = "blocked"; break; }
-    if (toolResult.action === "final_report") { finalStatus = "completed"; break; }
+    if (toolResult.action === "final_report") {
+      finalStatus = adapted.final_report?.status === "blocked" ? "blocked" : "completed";
+      break;
+    }
     if (!toolResult.allowed && !["policy_blocked_unsafe_tool", "malformed_tool_protocol"].includes(toolResult.failureCategory || "")) { finalStatus = "blocked"; break; }
     if (!shouldContinueAfterTool(toolResult, index, maxSteps)) { finalStatus = toolResult.allowed ? "completed" : "blocked"; break; }
   }
@@ -464,6 +489,7 @@ export async function runGatewayAgentToolLoop(config: GatewayConfig, client: Gat
     resolved_model_profile: profile,
     final_status: finalStatus,
     reasoning_text: lastAdapted?.reasoning_text ?? "",
+    final_report: groundFinalReport(lastAdapted?.final_report, steps),
     response_kind: lastAdapted?.response_kind,
     normalized_tool_intent: lastAdapted?.normalized_tool_intent,
     confidence: lastAdapted?.confidence ?? "low",

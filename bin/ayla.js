@@ -153,8 +153,18 @@ function render(payload) {
       rendered = true;
     }
   }
-  const final = payload.reasoning_text || payload.final_report?.summary || payload.content || "";
+  const final = payload.final_report?.summary || payload.reasoning_text || payload.content || "";
   if (final) { console.log(`\n${final}`); rendered = true; }
+  if (Array.isArray(payload.final_report?.evidence) && payload.final_report.evidence.length > 0) {
+    console.log("\nevidence:");
+    for (const item of payload.final_report.evidence) console.log(`- ${item}`);
+    rendered = true;
+  }
+  if (Array.isArray(payload.final_report?.blockers) && payload.final_report.blockers.length > 0) {
+    console.log("\nreport blockers:");
+    for (const item of payload.final_report.blockers) console.log(`- ${item}`);
+    rendered = true;
+  }
   const blocker = loop?.failureCategory
     || payload.work_session?.failure_category
     || payload.diagnostics?.sandboxBlocker

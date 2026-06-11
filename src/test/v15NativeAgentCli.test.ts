@@ -8,7 +8,7 @@ const root = process.cwd();
 
 test("V15 manifest contributes native AYLA tools and CLI", async () => {
   const manifest = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
-  assert.equal(manifest.version, "0.0.64");
+  assert.equal(manifest.version, "0.0.65");
   assert.equal(manifest.bin.ayla, "./bin/ayla.js");
   const names = manifest.contributes.languageModelTools.map((tool: { name: string }) => tool.name);
   assert.deepEqual(names, [
@@ -56,4 +56,16 @@ test("V15 provider enables tool calling and participant uses native progress", a
   assert.match(extension, /registerAylaNativeTools/);
   assert.match(extension, /stream\.progress/);
   assert.match(extension, /onProgress:[\s\S]*stream\.progress/);
+});
+
+
+test("V15 VSIX packaging excludes secrets and local runtime state", async () => {
+  const ignore = await readFile(join(root, ".vscodeignore"), "utf8");
+  assert.match(ignore, /^\.env$/m);
+  assert.match(ignore, /^\.env\.\*$/m);
+  assert.match(ignore, /^\.local\/\*\*$/m);
+  assert.match(ignore, /^gateway\/dist\/tests\/\*\*$/m);
+  const launcher = await readFile(join(root, "scripts", "ayla.ps1"), "utf8");
+  assert.match(launcher, /expectedVsixName/);
+  assert.doesNotMatch(launcher, /allow-package-env-file/);
 });

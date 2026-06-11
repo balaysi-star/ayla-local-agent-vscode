@@ -238,9 +238,11 @@ Invoke-Npm @('run', 'compile') 'Compile failed.'
 
 $latestVsix = Get-LatestVsix $repoRoot
 $latestSourceWriteUtc = Get-LatestSourceWriteTimeUtc $repoRoot
+$manifest = Get-Content (Join-Path $repoRoot 'package.json') -Raw | ConvertFrom-Json
+$expectedVsixName = "ayla-local-agent-vscode-$($manifest.version).vsix"
 $needsPackage = $true
 if ($latestVsix) {
-  $needsPackage = $latestVsix.LastWriteTimeUtc -lt $latestSourceWriteUtc
+  $needsPackage = $latestVsix.Name -ne $expectedVsixName -or $latestVsix.LastWriteTimeUtc -lt $latestSourceWriteUtc
 }
 if ($needsPackage) {
   Invoke-PackageVsix 'Packaging failed.'

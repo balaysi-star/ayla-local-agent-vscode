@@ -221,8 +221,11 @@ export class GatewayClient {
       return payload.reasoning_text ?? "";
     }
     const loop = payload.tool_loop;
+    const report = payload.final_report;
     const lines = [
-      payload.reasoning_text ?? "",
+      report?.summary ?? payload.reasoning_text ?? "",
+      ...(report?.evidence?.length ? ["", "Evidence", ...report.evidence.map((item) => `- ${item}`)] : []),
+      ...(report?.blockers?.length ? ["", "Blockers", ...report.blockers.map((item) => `- ${item}`)] : []),
       "",
       "LOCAL_AGENT_TOOL_LOOP_SUMMARY_V1",
       `final_status: ${payload.final_status ?? "unknown"}`,
@@ -332,6 +335,12 @@ export class GatewayClient {
 
 interface GatewayChatPayload {
   reasoning_text?: string;
+  final_report?: {
+    status?: "completed" | "blocked";
+    summary?: string;
+    evidence?: string[];
+    blockers?: string[];
+  };
   final_status?: string;
   diagnostics?: {
     noCloudFallback?: boolean;
