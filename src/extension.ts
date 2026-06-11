@@ -7,6 +7,7 @@ import { discoverModels } from "./ollama";
 import { parseRequestPayload, requiresWorkspace } from "./requestRouting";
 import { handleCommand } from "./router";
 import { SessionStore } from "./state";
+import { registerAylaNativeTools } from "./nativeTools";
 
 const LOCAL_ENGINEER_EXECUTION_MODE_TOKEN = "LOCAL_ENGINEER_EXECUTION_MODE";
 
@@ -84,6 +85,13 @@ export function activate(context: vscode.ExtensionContext): void {
   statusBar.text = "$(sparkle) Ayla: Ready";
   statusBar.show();
 
+  const nativeToolsRegistered = registerAylaNativeTools(context, {
+    getConfig: getLiveConfig,
+    logger,
+    sessions,
+    statusBar
+  });
+
   const registerLanguageModelChatProvider = (vscode as any).lm?.registerLanguageModelChatProvider;
   let languageModelProviderRegistered = false;
   if (typeof registerLanguageModelChatProvider === "function") {
@@ -118,7 +126,7 @@ export function activate(context: vscode.ExtensionContext): void {
       }
       try {
         if (parsed.command === "agent" && parsed.argumentText.trim().startsWith(LOCAL_ENGINEER_EXECUTION_MODE_TOKEN)) {
-          stream.markdown(`* route: local_engineer_execution_mode\n* workspace: ${root ?? "none"}\n\n`);
+          stream.progress(`AYLA local agent route · ${root ?? "no workspace"}`);
         }
         const response = await handleCommand(
           {
@@ -133,7 +141,7 @@ export function activate(context: vscode.ExtensionContext): void {
               languageModelVendor: "ayla-local-agent"
             },
             onProgress: (message) => {
-              stream.markdown(message);
+              stream.progress(String(message).trim());
             }
           },
           {
@@ -217,7 +225,8 @@ export function activate(context: vscode.ExtensionContext): void {
         `* chat API available: ${typeof createParticipant === "function" ? "yes" : "no"}`,
         `* participant registered: ${participantRegistered ? "yes" : "no"}`,
         `* lm provider API available: ${typeof registerLanguageModelChatProvider === "function" ? "yes" : "no"}`,
-        `* lm provider registered: ${languageModelProviderRegistered ? "yes" : "no"}`
+        `* lm provider registered: ${languageModelProviderRegistered ? "yes" : "no"}`,
+        `* native tools registered: ${nativeToolsRegistered ? "yes" : "no"}`
       ].join("\n");
       logger.info(diagnostics);
       vscode.window.showInformationMessage("Ayla activation diagnostics written to output channel.");

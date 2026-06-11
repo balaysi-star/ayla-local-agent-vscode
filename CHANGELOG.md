@@ -129,3 +129,12 @@
 - Upgraded the training pipeline and Python trainer to V2 with held-out validation/test datasets, evaluation loss, early stopping, best-checkpoint restore, and test metrics.
 - Added bounded multi-seed adapter campaigns that select only among candidates accepted by the existing before/after evaluation gate.
 - Added `POST /v1/training/campaign`, `gateway:train:campaign`, and environment controls for split ratios, contamination threshold, minimum examples, seed, warmup, and early stopping.
+
+## V15 - Native VS Code Agent UI and Shared AYLA CLI
+
+- Added eight extension-contributed Language Model Tools so VS Code renders AYLA actions as native tool cards with progress, completion, failure, cancellation, and confirmation states.
+- Added the workspace custom agent `AYLA CLI` under `.github/agents/AYLA.agent.md` with the local AYLA model and governed tools preselected.
+- Enabled tool calling in the AYLA Language Model Chat Provider and added a strict one-tool-at-a-time JSON bridge for Gemma/Ollama responses.
+- Changed legacy participant progress from printed Markdown trace to native `stream.progress` events; only the final response remains in chat.
+- Added the shared terminal CLI command with interactive, status, models, run, diff, and VS Code launch modes. The CLI uses the same Gateway, autonomous loop, worktree, resume, and validation contracts.
+- Updated the Windows installer so `ayla` opens the CLI; use `ayla vscode` to launch the isolated VS Code profile.

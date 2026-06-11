@@ -393,3 +393,30 @@ npm run gateway:train:campaign
 ```
 
 The campaign trains/evaluates bounded candidate seeds, rejects candidates that fail the existing before/after quality gates, selects the highest-scoring accepted adapter, and promotes it only when `promoteBestIfAccepted=true`. No training, registration, or promotion occurs by default without the existing explicit execution and base-alignment acknowledgements.
+
+## V15 native agent UI
+
+Open VS Code Chat and select **AYLA CLI** from the agent picker. The custom agent uses the AYLA local model and extension tools. Tool activity is rendered by VS Code as native tool cards rather than printed execution messages. Patch application uses the native confirmation UI.
+
+Available native tools include workspace read/search, Git diff, validation, governed patch proposal/application, status, and the bounded autonomous task loop.
+
+## AYLA CLI
+
+Install the command on Windows:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\install-ayla-command.ps1
+```
+
+Then use:
+
+```text
+ayla                     # interactive session
+ayla status
+ayla models
+ayla run "inspect and fix the failing test"
+ayla diff
+ayla vscode              # launch the isolated VS Code profile
+```
+
+The CLI starts the local Gateway when needed and uses the current directory as the target workspace.

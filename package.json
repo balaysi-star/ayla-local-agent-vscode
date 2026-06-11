@@ -1,8 +1,8 @@
 {
   "name": "ayla-local-agent-vscode",
   "displayName": "Ayla Local Agent",
-  "description": "Standalone internal-model chat participant for VS Code backed by Ollama.",
-  "version": "0.0.60",
+  "description": "Native VS Code local agent with governed AYLA tools, Gemma/Ollama routing, and shared CLI.",
+  "version": "0.0.61",
   "publisher": "internal",
   "engines": {
     "vscode": "^1.105.0"
@@ -198,8 +198,8 @@
         },
         "aylaLocalAgent.showAgentTrace": {
           "type": "boolean",
-          "default": true,
-          "markdownDescription": "Show visible agent trace sections directly in chat during agent runs."
+          "default": false,
+          "markdownDescription": "Legacy chat-participant trace. Keep disabled when using the native AYLA CLI custom agent and native tool UI."
         },
         "aylaLocalAgent.showCommandOutput": {
           "type": "boolean",
@@ -329,7 +329,158 @@
           "markdownDescription": "Optional workspace-relative scopes the autonomous gateway loop may read, search, diff, blame, or edit. Empty means entire workspace except blocked/secret paths."
         }
       }
-    }
+    },
+    "languageModelTools": [
+      {
+        "name": "ayla_status",
+        "displayName": "AYLA Status",
+        "toolReferenceName": "ayla-status",
+        "modelDescription": "Read the active AYLA model, Gateway status, pending patch state, and session state. Use for readiness checks.",
+        "userDescription": "Read the active AYLA model, Gateway status, pending patch state, and session state. Use for readiness checks.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(pulse)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "ayla_read_file",
+        "displayName": "Read Workspace File",
+        "toolReferenceName": "ayla-read_file",
+        "modelDescription": "Read one workspace file through AYLA path and secret policy. Use before editing or making source claims.",
+        "userDescription": "Read one workspace file through AYLA path and secret policy. Use before editing or making source claims.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(file-code)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "description": "Workspace-relative file path to read."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "path"
+          ]
+        }
+      },
+      {
+        "name": "ayla_search_workspace",
+        "displayName": "Search Workspace",
+        "toolReferenceName": "ayla-search_workspace",
+        "modelDescription": "Search workspace text through AYLA bounded search policy. Use to locate symbols, callers, tests, or configuration.",
+        "userDescription": "Search workspace text through AYLA bounded search policy. Use to locate symbols, callers, tests, or configuration.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(search)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "Literal text or symbol to search for in the workspace."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "query"
+          ]
+        }
+      },
+      {
+        "name": "ayla_git_diff",
+        "displayName": "Review Git Diff",
+        "toolReferenceName": "ayla-git_diff",
+        "modelDescription": "Return the current bounded Git diff summary without mutating the repository.",
+        "userDescription": "Return the current bounded Git diff summary without mutating the repository.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(diff)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "ayla_validate",
+        "displayName": "Run Validation",
+        "toolReferenceName": "ayla-validate",
+        "modelDescription": "Run one allowlisted validation command and return bounded output. Do not use for arbitrary shell commands.",
+        "userDescription": "Run one allowlisted validation command and return bounded output. Do not use for arbitrary shell commands.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(beaker)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "command": {
+              "type": "string",
+              "description": "Bounded allowlisted validation command. Defaults to npm test."
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "ayla_propose_patch",
+        "displayName": "Propose Patch",
+        "toolReferenceName": "ayla-propose_patch",
+        "modelDescription": "Ask AYLA to create a governed pending patch without applying it. Use only after source inspection.",
+        "userDescription": "Ask AYLA to create a governed pending patch without applying it. Use only after source inspection.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(edit)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "task": {
+              "type": "string",
+              "description": "Specific requested code change. The patch is proposed but not applied."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "task"
+          ]
+        }
+      },
+      {
+        "name": "ayla_apply_patch",
+        "displayName": "Apply Reviewed Patch",
+        "toolReferenceName": "ayla-apply_patch",
+        "modelDescription": "Apply the current pending AYLA patch after native user confirmation.",
+        "userDescription": "Apply the current pending AYLA patch after native user confirmation.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(check)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "ayla_run_task",
+        "displayName": "Run Governed Task",
+        "toolReferenceName": "ayla-run_task",
+        "modelDescription": "Run the bounded AYLA autonomous loop using the shared Gateway, worktree, validation, and resume contracts.",
+        "userDescription": "Run the bounded AYLA autonomous loop using the shared Gateway, worktree, validation, and resume contracts.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(sparkle)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "task": {
+              "type": "string",
+              "description": "Specific autonomous coding task for the governed AYLA loop."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "task"
+          ]
+        }
+      }
+    ]
   },
   "scripts": {
     "compile": "node -e \"require('fs').rmSync('out',{ recursive: true, force: true })\" && tsc -p ./",
@@ -347,11 +498,16 @@
     "gateway:dataset": "npm run gateway:build && node ./gateway/dist/dataset/runDatasetExport.js",
     "gateway:train": "npm run gateway:build && node ./gateway/dist/training/runLocalTraining.js",
     "gateway:benchmark": "npm run gateway:build && node ./gateway/dist/eval/runAylaBenchmark.js",
-    "gateway:train:campaign": "npm run gateway:build && node ./gateway/dist/training/runTrainingCampaign.js"
+    "gateway:train:campaign": "npm run gateway:build && node ./gateway/dist/training/runTrainingCampaign.js",
+    "cli": "node ./bin/ayla.js",
+    "cli:status": "node ./bin/ayla.js status"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
     "@types/vscode": "^1.105.0",
     "typescript": "^5.9.3"
+  },
+  "bin": {
+    "ayla": "./bin/ayla.js"
   }
 }

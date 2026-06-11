@@ -9,9 +9,9 @@ function Fail([string]$Message) {
 }
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$launcherScript = Join-Path $repoRoot 'scripts\ayla.ps1'
-if (-not (Test-Path $launcherScript)) {
-  Fail "Launcher script missing: $launcherScript"
+$cliScript = Join-Path $repoRoot 'bin\ayla.js'
+if (-not (Test-Path $cliScript)) {
+  Fail "CLI script missing: $cliScript"
 }
 
 $installRoot = Join-Path $env:USERPROFILE '.ayla'
@@ -20,7 +20,7 @@ $cmdPath = Join-Path $binDir 'ayla.cmd'
 
 New-Item -ItemType Directory -Force -Path $binDir | Out-Null
 
-$cmdContent = "@echo off`r`nsetlocal`r`npowershell -NoProfile -ExecutionPolicy Bypass -File `"$launcherScript`" %*`r`n"
+$cmdContent = "@echo off`r`nsetlocal`r`nnode `"$cliScript`" %*`r`n"
 Set-Content -Path $cmdPath -Value $cmdContent -Encoding Ascii -NoNewline
 
 $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
@@ -50,5 +50,8 @@ Write-Host 'Ayla command installed.' -ForegroundColor Green
 Write-Host "Shim: $cmdPath"
 Write-Host "Repo: $repoRoot"
 Write-Host ''
-Write-Host 'Use this command daily:' -ForegroundColor Cyan
+Write-Host 'Use these commands:' -ForegroundColor Cyan
 Write-Host 'ayla' -ForegroundColor Yellow
+Write-Host 'ayla status' -ForegroundColor Yellow
+Write-Host 'ayla run "<task>"' -ForegroundColor Yellow
+Write-Host 'ayla vscode' -ForegroundColor Yellow

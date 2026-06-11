@@ -8,6 +8,7 @@ import {
 } from "./languageModelBridge";
 import { Logger } from "./logging";
 import { discoverModels, runChat } from "./ollama";
+import { buildNativeToolPrompt, createNativeToolCallPart, parseNativeModelEnvelope } from "./nativeToolProtocol";
 
 interface ProviderRuntimeDeps {
   discoverModels: typeof discoverModels;
@@ -36,7 +37,7 @@ function toModelInformation(modelId: string): vscode.LanguageModelChatInformatio
     maxOutputTokens: 4096,
     capabilities: {
       imageInput: false,
-      toolCalling: false
+      toolCalling: true
     }
   };
 }
@@ -100,7 +101,7 @@ export function createAylaLanguageModelChatProvider(
       return [toModelInformation(fallbackModelId)];
     },
 
-    async provideLanguageModelChatResponse(model, messages, _options, progress, token) {
+    async provideLanguageModelChatResponse(model, messages, options, progress, token) {
       try {
         const config = getConfig();
         let resolvedModelId = model.id;
@@ -128,6 +129,25 @@ export function createAylaLanguageModelChatProvider(
           : [{ role: "user", content: "" }];
 
         if (token.isCancellationRequested) {
+          return;
+        }
+
+        const tools = options.tools ?? [];
+        if (tools.length > 0) {
+          const toolPrompt = buildNativeToolPrompt(messages, tools);
+          const toolConfig: AgentConfig = { ...config, gatewayAutonomousEnabled: false };
+          const raw = await runtimeDeps.runChat(toolConfig, resolvedModelId, [{ role: "user", content: toolPrompt }]);
+          const envelope = parseNativeModelEnvelope(raw, new Set(tools.map((tool) => tool.name)));
+          if (envelope?.kind === "tool_call") {
+            progress.report(createNativeToolCallPart(envelope));
+            return;
+          }
+          if (envelope?.kind === "final") {
+            progress.report(new vscode.LanguageModelTextPart(envelope.content));
+            return;
+          }
+          logger.error("Ayla native tool response was not a valid tool envelope; returning bounded text fallback.");
+          progress.report(new vscode.LanguageModelTextPart(raw));
           return;
         }
 
