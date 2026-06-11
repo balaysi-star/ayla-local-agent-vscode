@@ -25,6 +25,7 @@ export interface AgentConfig {
   gatewayContainerSidecarChatBaseUrl: string;
   gatewayContainerSidecarOpenAiBaseUrl: string;
   gatewayContainerSidecarTimeoutMs: number;
+  gatewayChatTimeoutMs?: number;
   gatewayAutonomousEnabled?: boolean;
   gatewayAutonomousAllowedScopes?: string[];
   workspaceRoot?: string;
@@ -51,6 +52,7 @@ export function getConfig(): AgentConfig {
   const envGatewayBaseUrl = process.env.AYLA_GATEWAY_BASE_URL ?? "";
   const envGatewayContainerSidecarChatBaseUrl = process.env.AYLA_GATEWAY_CONTAINER_SIDECAR_CHAT_BASE_URL ?? "";
   const envGatewayContainerSidecarOpenAiBaseUrl = process.env.AYLA_GATEWAY_CONTAINER_SIDECAR_OPENAI_BASE_URL ?? "";
+  const envGatewayChatTimeoutMs = Number(process.env.AYLA_GATEWAY_CHAT_TIMEOUT_MS || "0");
   const envActiveModel = process.env.AYLA_ACTIVE_MODEL ?? "";
   const legacyModelAlias = config.get<string>("model", "");
   const activeModel = config.get<string>("activeModel", "") || legacyModelAlias || envActiveModel;
@@ -68,6 +70,7 @@ export function getConfig(): AgentConfig {
     gatewayContainerSidecarChatBaseUrl: modernConfig.get<string>("gateway.containerSidecar.chatBaseUrl", envGatewayContainerSidecarChatBaseUrl || "http://127.0.0.1:5005"),
     gatewayContainerSidecarOpenAiBaseUrl: modernConfig.get<string>("gateway.containerSidecar.openAiBaseUrl", envGatewayContainerSidecarOpenAiBaseUrl || "http://127.0.0.1:11435"),
     gatewayContainerSidecarTimeoutMs: modernConfig.get<number>("gateway.containerSidecar.timeoutMs", 30000),
+    gatewayChatTimeoutMs: modernConfig.get<number>("gateway.chatTimeoutMs", envGatewayChatTimeoutMs > 0 ? envGatewayChatTimeoutMs : 600000),
     gatewayAutonomousEnabled: modernConfig.get<boolean>("gateway.autonomous.enabled", true),
     gatewayAutonomousAllowedScopes: modernConfig.get<string[]>("gateway.autonomous.allowedScopes", []),
     workspaceRoot: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,

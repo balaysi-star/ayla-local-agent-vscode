@@ -138,3 +138,26 @@
 - Changed legacy participant progress from printed Markdown trace to native `stream.progress` events; only the final response remains in chat.
 - Added the shared terminal CLI command with interactive, status, models, run, diff, and VS Code launch modes. The CLI uses the same Gateway, autonomous loop, worktree, resume, and validation contracts.
 - Updated the Windows installer so `ayla` opens the CLI; use `ayla vscode` to launch the isolated VS Code profile.
+
+## V15.1 - CLI Startup Reliability
+
+- Build the Gateway during `install-ayla-command.ps1` instead of hiding first-run build failures.
+- Start the compiled Gateway directly with Node and persist stdout/stderr logs under `.local/cli/`.
+- Add bounded HTTP/startup timeouts, visible startup progress, and actionable failure diagnostics.
+- Add `ayla doctor` and install the global `AYLA.agent.md` definition during command setup.
+- Prevent request timeout timers from keeping short CLI commands alive after their output completes.
+
+## V15.2 - Long-Running Local Model Responses
+
+- Separate short health/request timeouts from long model chat timeouts.
+- Add `ayla.gateway.chatTimeoutMs` with a 10-minute default for VS Code Gateway chat requests.
+- Add `AYLA_CLI_CHAT_TIMEOUT_MS` with a 10-minute default for terminal tasks.
+- Show CLI model selection, task start, and heartbeat progress while Gemma is working.
+- Fail explicitly when the Gateway returns no tool steps, final text, status, or session evidence.
+- Add a regression test proving delayed chat responses survive the short command timeout.
+## V15.3 - CLI sandbox gating and blocker visibility
+
+- Do not create a Git worktree eagerly for conversational/read-only CLI tasks; the Gateway still creates an isolated worktree automatically when a mutation tool is requested.
+- Print the exact Gateway failure category when a task is blocked instead of showing only `status: blocked`.
+- Research flags remain explicit deployment settings; enabling them does not claim external search execution.
+

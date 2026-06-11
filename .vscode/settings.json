@@ -1,11 +1,12 @@
 {
-    "aylaLocalAgent.ollamaBaseUrl":  "http://localhost:11434",
-    "aylaLocalAgent.activeModel":  "ayla-local-coder:latest",
-    "aylaLocalAgent.defaultModel":  "ayla-local-coder:latest",
-    "aylaLocalAgent.commandTimeoutMs":  120000,
-    "ayla.ollama.baseUrl":  "http://localhost:11434",
-    "ayla.ollama.defaultModel":  "ayla-local-coder:latest",
-    "ayla.gateway.enabled":  true,
-    "ayla.gateway.preferGateway":  true,
-    "ayla.gateway.mode":  "required"
+    "aylaLocalAgent.ollamaBaseUrl": "http://localhost:11434",
+    "aylaLocalAgent.activeModel": "ayla-local-coder:latest",
+    "aylaLocalAgent.defaultModel": "ayla-local-coder:latest",
+    "aylaLocalAgent.commandTimeoutMs": 120000,
+    "ayla.ollama.baseUrl": "http://localhost:11434",
+    "ayla.ollama.defaultModel": "ayla-local-coder:latest",
+    "ayla.gateway.enabled": true,
+    "ayla.gateway.preferGateway": true,
+    "ayla.gateway.mode": "required",
+    "ayla.gateway.chatTimeoutMs": 600000
 }

@@ -64,18 +64,20 @@ export interface GatewayStatusResponse {
 
 export class GatewayClient {
   private readonly timeoutMs: number;
+  private readonly chatTimeoutMs: number;
 
   constructor(private readonly config: AgentConfig) {
     this.timeoutMs = Math.max(1000, config.commandTimeoutMs || 30000);
+    this.chatTimeoutMs = Math.max(this.timeoutMs, config.gatewayChatTimeoutMs || 600000);
   }
 
   private baseUrl(): string {
     return defaultGatewayBaseUrl(this.config);
   }
 
-  private withTimeoutSignal(signal?: AbortSignal): AbortSignal {
+  private withTimeoutSignal(signal?: AbortSignal, timeoutMs: number = this.timeoutMs): AbortSignal {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(new Error("GATEWAY_TIMEOUT")), this.timeoutMs);
+    const timer = setTimeout(() => controller.abort(new Error("GATEWAY_TIMEOUT")), timeoutMs);
 
     const abort = (): void => {
       clearTimeout(timer);
@@ -259,7 +261,7 @@ export class GatewayClient {
           maxSteps: Math.max(1, Math.min(this.config.maxSteps || 4, 24)),
           context: this.buildAutonomousContext(task)
         }),
-        signal: this.withTimeoutSignal()
+        signal: this.withTimeoutSignal(undefined, this.chatTimeoutMs)
       });
 
       if (!response.ok) {

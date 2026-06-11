@@ -105,3 +105,36 @@ test("gateway client classifies wrong endpoint responses", async () => {
     globalThis.fetch = originalFetch;
   }
 });
+
+test("gateway chat uses the dedicated long chat timeout instead of the short command timeout", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = ((input: unknown, init?: RequestInit) => new Promise<Response>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      resolve(new Response(JSON.stringify({ reasoning_text: "DELAYED_OK" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      }));
+    }, 1200);
+    const signal = init?.signal;
+    if (signal) {
+      const onAbort = () => {
+        clearTimeout(timer);
+        reject(signal.reason ?? new Error("ABORTED"));
+      };
+      if (signal.aborted) onAbort();
+      else signal.addEventListener("abort", onAbort, { once: true });
+    }
+  })) as typeof fetch;
+
+  try {
+    const client = new GatewayClient({
+      ...makeConfig(),
+      commandTimeoutMs: 1000,
+      gatewayChatTimeoutMs: 2500
+    });
+    const result = await client.chat("test-model", [{ role: "user", content: "delayed" }]);
+    assert.equal(result.content, "DELAYED_OK");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

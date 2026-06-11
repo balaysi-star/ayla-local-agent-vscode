@@ -2,7 +2,7 @@
   "name": "ayla-local-agent-vscode",
   "displayName": "Ayla Local Agent",
   "description": "Native VS Code local agent with governed AYLA tools, Gemma/Ollama routing, and shared CLI.",
-  "version": "0.0.61",
+  "version": "0.0.64",
   "publisher": "internal",
   "engines": {
     "vscode": "^1.105.0"
@@ -273,6 +273,13 @@
           "type": "string",
           "default": "http://127.0.0.1:8089",
           "markdownDescription": "Base URL for the Ayla Local Brain Gateway."
+        },
+        "ayla.gateway.chatTimeoutMs": {
+          "type": "number",
+          "default": 600000,
+          "minimum": 30000,
+          "maximum": 1800000,
+          "markdownDescription": "Maximum time allowed for a local model/Gateway chat response. Health checks and other short requests keep their smaller timeout."
         },
         "ayla.gateway.mode": {
           "type": "string",

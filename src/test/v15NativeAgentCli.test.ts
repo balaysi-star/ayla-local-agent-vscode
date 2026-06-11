@@ -8,7 +8,7 @@ const root = process.cwd();
 
 test("V15 manifest contributes native AYLA tools and CLI", async () => {
   const manifest = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
-  assert.equal(manifest.version, "0.0.61");
+  assert.equal(manifest.version, "0.0.64");
   assert.equal(manifest.bin.ayla, "./bin/ayla.js");
   const names = manifest.contributes.languageModelTools.map((tool: { name: string }) => tool.name);
   assert.deepEqual(names, [
@@ -33,11 +33,19 @@ test("V15 custom agent and CLI share AYLA runtime", async () => {
   assert.match(agent, /name: AYLA CLI/);
   assert.match(agent, /model: ayla-local-coder:latest/);
   assert.match(agent, /ayla_apply_patch/);
+  const manifest = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
   const cli = await readFile(join(root, "bin", "ayla.js"), "utf8");
   assert.match(cli, /\/v1\/chat/);
-  assert.match(cli, /gateway:dev/);
+  assert.match(cli, /gatewayEntry = path\.join\(root, "gateway", "dist", "server\.js"\)/);
+  assert.match(cli, /AYLA CLI starting/);
+  assert.match(cli, /GATEWAY_START_TIMEOUT/);
   assert.match(cli, /AYLA_TOOL_PROTOCOL_V1/);
   assert.match(cli, /interactive/);
+  assert.match(cli, /AYLA_CLI_CHAT_TIMEOUT_MS/);
+  assert.match(cli, /AYLA is still working/);
+  assert.match(cli, /sandbox: \{ enabled: false, cleanupOnComplete: true \}/);
+  assert.match(cli, /blocker: \${blocker}/);
+  assert.equal(manifest.contributes.configuration.properties["ayla.gateway.chatTimeoutMs"].default, 600000);
 });
 
 test("V15 provider enables tool calling and participant uses native progress", async () => {
