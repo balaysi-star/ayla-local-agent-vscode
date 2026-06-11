@@ -25,6 +25,9 @@ export interface AgentConfig {
   gatewayContainerSidecarChatBaseUrl: string;
   gatewayContainerSidecarOpenAiBaseUrl: string;
   gatewayContainerSidecarTimeoutMs: number;
+  gatewayAutonomousEnabled?: boolean;
+  gatewayAutonomousAllowedScopes?: string[];
+  workspaceRoot?: string;
   activeModel: string;
   defaultModel: string;
   defaultNonSlashMode: DefaultNonSlashMode;
@@ -65,6 +68,9 @@ export function getConfig(): AgentConfig {
     gatewayContainerSidecarChatBaseUrl: modernConfig.get<string>("gateway.containerSidecar.chatBaseUrl", envGatewayContainerSidecarChatBaseUrl || "http://127.0.0.1:5005"),
     gatewayContainerSidecarOpenAiBaseUrl: modernConfig.get<string>("gateway.containerSidecar.openAiBaseUrl", envGatewayContainerSidecarOpenAiBaseUrl || "http://127.0.0.1:11435"),
     gatewayContainerSidecarTimeoutMs: modernConfig.get<number>("gateway.containerSidecar.timeoutMs", 30000),
+    gatewayAutonomousEnabled: modernConfig.get<boolean>("gateway.autonomous.enabled", true),
+    gatewayAutonomousAllowedScopes: modernConfig.get<string[]>("gateway.autonomous.allowedScopes", []),
+    workspaceRoot: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
     activeModel: activeModel || defaultModel,
     defaultModel,
     defaultNonSlashMode: config.get<DefaultNonSlashMode>("defaultNonSlashMode", "smart"),

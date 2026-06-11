@@ -1,0 +1,2369 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ayla://schemas/ayla-tool-protocol-v1.schema.json",
+  "title": "AYLA_TOOL_PROTOCOL_V1",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "list_dir"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [],
+              "properties": {
+                "path": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "read_file"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "path"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "read_file_range"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "path",
+                "startLine",
+                "endLine"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "startLine": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "endLine": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "read_file_tail"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "path"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "lineCount": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 400
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "file_outline"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "path"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "imports_exports"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "path"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "find_symbol"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "name"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "symbol_index"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [],
+              "properties": {
+                "glob": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "find_references"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "name"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "glob": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "typescript_diagnostics"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [],
+              "properties": {}
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "python_ast_outline"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "path"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "python_import_graph"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [],
+              "properties": {
+                "glob": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "python_find_definition"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "name"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "python_find_references"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "name"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "python_callers"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "name"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "python_callees"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "name"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "python_class_hierarchy"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [],
+              "properties": {
+                "glob": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "python_compileall"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [],
+              "properties": {
+                "path": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "pytest"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [],
+              "properties": {
+                "target": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "module_docs_validation"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [],
+              "properties": {}
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "ruff_check"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [],
+              "properties": {
+                "path": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "mypy_check"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [],
+              "properties": {
+                "path": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "docker_compose_ps"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [],
+              "properties": {}
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "docker_compose_inventory"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [],
+              "properties": {}
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "docker_logs_tail"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "service"
+              ],
+              "properties": {
+                "service": {
+                  "type": "string"
+                },
+                "lineCount": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2000
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "ollama_tags"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [],
+              "properties": {}
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "sd_health"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [],
+              "properties": {}
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "http_health"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "url"
+              ],
+              "properties": {
+                "url": {
+                  "type": "string",
+                  "format": "uri"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "openapi_routes"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "url"
+              ],
+              "properties": {
+                "url": {
+                  "type": "string",
+                  "format": "uri"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "postgres_connectivity"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [],
+              "properties": {
+                "hostPort": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "git_current_state"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [],
+              "properties": {}
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "git_status"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [],
+              "properties": {}
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "git_diff"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [],
+              "properties": {
+                "path": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "git_log"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [],
+              "properties": {
+                "maxCount": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 50
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "git_show"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "revision"
+              ],
+              "properties": {
+                "revision": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "git_show_name_only"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "revision"
+              ],
+              "properties": {
+                "revision": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "git_blame_range"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "path"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "startLine": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "endLine": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "git_ls_files"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [],
+              "properties": {
+                "pattern": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "text_search"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "query"
+              ],
+              "properties": {
+                "query": {
+                  "type": "string"
+                },
+                "glob": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "search_in_file"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "path",
+                "query"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "query": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "search_files"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "pattern"
+              ],
+              "properties": {
+                "pattern": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "replace_in_file"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "path",
+                "expected",
+                "replacement"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "expected": {
+                  "type": "string"
+                },
+                "replacement": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "edit_line_range"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "path",
+                "startLine",
+                "endLine",
+                "replacement"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "startLine": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "endLine": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "replacement": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "create_file_guarded"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "path",
+                "content"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "content": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "rename_file_guarded"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "path",
+                "destination"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "destination": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "apply_unified_patch"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "patch"
+              ],
+              "properties": {
+                "patch": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "run_validation"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "command"
+              ],
+              "properties": {
+                "command": {
+                  "enum": [
+                    "npm test",
+                    "npm run compile",
+                    "npm run gateway:test",
+                    "git status"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "tool_call"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "tool_call"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "tool_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "const": "final_report"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [],
+              "properties": {
+                "summary": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "kind",
+        "reasoning_summary",
+        "final_report"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "AYLA_TOOL_PROTOCOL_V1"
+        },
+        "kind": {
+          "const": "final_report"
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "final_report": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "summary"
+          ],
+          "properties": {
+            "status": {
+              "enum": [
+                "completed",
+                "blocked"
+              ]
+            },
+            "summary": {
+              "type": "string",
+              "minLength": 1
+            },
+            "evidence": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "blockers": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

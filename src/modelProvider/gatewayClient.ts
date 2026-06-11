@@ -1,4 +1,5 @@
 import { AgentConfig } from "../config";
+import { classifyTaskPrompt, TaskClass } from "../taskClassifier";
 import { OllamaModel } from "../types";
 import {
   classifyGatewayFailureType,
@@ -8,6 +9,13 @@ import {
   safeBodySnippet
 } from "../gatewayConnectivity";
 
+
+function toGatewayTaskClass(taskClass: TaskClass): string {
+  if (taskClass === "local_agent_safe_execution_gate") return "repair_existing";
+  if (taskClass === "sidecar_structured_edit_validation_proof") return "create_validate";
+  return taskClass;
+}
+
 export interface GatewayChatDiagnostics {
   noCloudFallback: boolean;
   stream?: {
@@ -16,6 +24,22 @@ export interface GatewayChatDiagnostics {
     chunksReceived?: number;
     bytesReceived?: number;
     firstTokenReceived?: boolean;
+  };
+  autonomous?: boolean;
+  toolLoop?: {
+    enabled?: boolean;
+    modelTurns?: number;
+    executedToolCount?: number;
+    observationsFedBackToModel?: boolean;
+    validationResult?: string;
+    failureCategory?: string;
+  };
+  workSession?: {
+    sessionId?: string;
+    status?: string;
+    currentPhase?: string;
+    resumePath?: string;
+    evidenceCount?: number;
   };
 }
 
@@ -162,13 +186,79 @@ export class GatewayClient {
     }));
   }
 
+  private buildAutonomousContext(task: string): Record<string, unknown> {
+    const taskClass = toGatewayTaskClass(classifyTaskPrompt(task));
+    return {
+      workspaceRoot: this.config.workspaceRoot,
+      allowedScopes: this.config.gatewayAutonomousAllowedScopes ?? [],
+      taskClass,
+      agentLoop: {
+        enabled: this.config.gatewayAutonomousEnabled ?? true,
+        maxSteps: Math.max(1, Math.min(this.config.maxSteps || 4, 24))
+      },
+      activePhase: "vscode_prompt_execution",
+      stableConstraints: [
+        "source-first; no guessing",
+        "use local tools before final claims",
+        "no cloud fallback",
+        "do not commit or push"
+      ],
+      activeInstructions: [task],
+      toolProtocol: {
+        version: "AYLA_TOOL_PROTOCOL_V1",
+        strict: true,
+        maxRepairAttempts: 2
+      },
+      resume: { auto: true, allowStaleEvidence: false },
+      sandbox: { enabled: ["repair_existing", "create_validate", "test_failure_repair"].includes(taskClass), cleanupOnComplete: true }
+    };
+  }
+
+  private formatToolLoopSummary(payload: GatewayChatPayload): string {
+    if (!payload.tool_loop) {
+      return payload.reasoning_text ?? "";
+    }
+    const loop = payload.tool_loop;
+    const lines = [
+      payload.reasoning_text ?? "",
+      "",
+      "LOCAL_AGENT_TOOL_LOOP_SUMMARY_V1",
+      `final_status: ${payload.final_status ?? "unknown"}`,
+      `model_turns: ${loop.modelTurns ?? 0}`,
+      `executed_tool_count: ${loop.executedToolCount ?? 0}`,
+      `observations_fed_back_to_model: ${loop.observationsFedBackToModel ? "yes" : "no"}`,
+      loop.validationResult ? `validation_result: ${loop.validationResult}` : undefined,
+      loop.failureCategory ? `failure_category: ${loop.failureCategory}` : undefined,
+      payload.work_session ? "" : undefined,
+      payload.work_session ? "AYLA_AGENT_WORK_SESSION_SUMMARY_V1" : undefined,
+      payload.work_session ? `session_id: ${payload.work_session.session_id ?? "unknown"}` : undefined,
+      payload.work_session ? `session_status: ${payload.work_session.status ?? "unknown"}` : undefined,
+      payload.work_session ? `phase_history: ${(payload.work_session.phase_history ?? []).join(" -> ")}` : undefined,
+      payload.work_session ? `resume_path: ${payload.work_session.resume_path ?? "not_persisted"}` : undefined,
+      ...(loop.steps ?? []).map((step, index) => {
+        const result = step.toolResult ?? {};
+        return `step_${index + 1}: action=${result.action ?? "unknown"}; executed=${result.executed ? "yes" : "no"}; allowed=${result.allowed ? "yes" : "no"}; reason=${result.reason ?? "unknown"}`;
+      })
+    ].filter((line): line is string => typeof line === "string");
+    return lines.join("\n").trim();
+  }
+
   public async chat(model: string, messages: Array<{ role: "system" | "user" | "assistant"; content: string }>): Promise<{ content: string; diagnostics: GatewayChatDiagnostics }> {
     const url = `${this.baseUrl()}/v1/chat`;
+    const task = messages.at(-1)?.content || "";
+    const autonomous = this.config.gatewayAutonomousEnabled ?? true;
     try {
       const response = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model, messages, task: messages.at(-1)?.content || "" }),
+        body: JSON.stringify({
+          model,
+          messages,
+          task,
+          autonomous,
+          maxSteps: Math.max(1, Math.min(this.config.maxSteps || 4, 24)),
+          context: this.buildAutonomousContext(task)
+        }),
         signal: this.withTimeoutSignal()
       });
 
@@ -181,21 +271,9 @@ export class GatewayClient {
         );
       }
 
-      let payload: {
-        reasoning_text?: string;
-        diagnostics?: {
-          noCloudFallback?: boolean;
-          stream?: GatewayChatDiagnostics["stream"];
-        };
-      };
+      let payload: GatewayChatPayload;
       try {
-        payload = await response.json() as {
-          reasoning_text?: string;
-          diagnostics?: {
-            noCloudFallback?: boolean;
-            stream?: GatewayChatDiagnostics["stream"];
-          };
-        };
+        payload = await response.json() as GatewayChatPayload;
       } catch (error) {
         const failureType = "invalid_json" as const;
         const nestedError = error instanceof Error ? error.message : "JSON_PARSE_FAILED";
@@ -210,10 +288,26 @@ export class GatewayClient {
       }
       const diagnostics = payload.diagnostics ?? {};
       return {
-        content: payload.reasoning_text ?? "",
+        content: this.formatToolLoopSummary(payload),
         diagnostics: {
           noCloudFallback: diagnostics.noCloudFallback ?? true,
-          stream: diagnostics.stream
+          stream: diagnostics.stream,
+          autonomous,
+          toolLoop: payload.tool_loop ? {
+            enabled: payload.tool_loop.enabled,
+            modelTurns: payload.tool_loop.modelTurns,
+            executedToolCount: payload.tool_loop.executedToolCount,
+            observationsFedBackToModel: payload.tool_loop.observationsFedBackToModel,
+            validationResult: payload.tool_loop.validationResult,
+            failureCategory: payload.tool_loop.failureCategory
+          } : undefined,
+          workSession: payload.work_session ? {
+            sessionId: payload.work_session.session_id,
+            status: payload.work_session.status,
+            currentPhase: payload.work_session.current_phase,
+            resumePath: payload.work_session.resume_path,
+            evidenceCount: payload.work_session.evidence?.length
+          } : undefined
         }
       };
     } catch (error) {
@@ -232,4 +326,37 @@ export class GatewayClient {
       );
     }
   }
+}
+
+interface GatewayChatPayload {
+  reasoning_text?: string;
+  final_status?: string;
+  diagnostics?: {
+    noCloudFallback?: boolean;
+    stream?: GatewayChatDiagnostics["stream"];
+  };
+  tool_loop?: {
+    enabled?: boolean;
+    modelTurns?: number;
+    executedToolCount?: number;
+    observationsFedBackToModel?: boolean;
+    validationResult?: string;
+    failureCategory?: string;
+    steps?: Array<{
+      toolResult?: {
+        action?: string;
+        executed?: boolean;
+        allowed?: boolean;
+        reason?: string;
+      };
+    }>;
+  };
+  work_session?: {
+    session_id?: string;
+    status?: string;
+    current_phase?: string;
+    phase_history?: string[];
+    resume_path?: string;
+    evidence?: unknown[];
+  };
 }

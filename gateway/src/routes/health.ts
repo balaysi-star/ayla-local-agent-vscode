@@ -5,7 +5,7 @@ export async function buildHealthResponse(config: GatewayConfig, client: Gateway
   const health = await client.health();
   return {
     status: health.reachable ? "ok" : "degraded",
-    gatewayVersion: "0.0.48",
+    gatewayVersion: "0.0.49",
     ollamaReachable: health.reachable,
     selectedModel: config.defaultModel || "unset",
     researchEnabled: {

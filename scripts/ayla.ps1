@@ -1,5 +1,7 @@
 [CmdletBinding()]
-param()
+param(
+  [string]$TargetWorkspace = $env:AYLA_TARGET_WORKSPACE
+)
 
 $ErrorActionPreference = 'Stop'
 
@@ -161,6 +163,7 @@ function Get-LatestSourceWriteTimeUtc([string]$RepoRoot) {
     (Join-Path $RepoRoot 'package.json')
     (Join-Path $RepoRoot 'tsconfig.json')
     (Join-Path $RepoRoot 'src')
+    (Join-Path $RepoRoot 'gateway')
     (Join-Path $RepoRoot 'scripts')
   )
   $items = @()
@@ -188,6 +191,14 @@ function Invoke-PackageVsix([string]$FailureMessage) {
 }
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+if ([string]::IsNullOrWhiteSpace($TargetWorkspace)) {
+  $defaultTarget = 'D:\octopus_main\Ayla'
+  $TargetWorkspace = if (Test-Path $defaultTarget) { $defaultTarget } else { $repoRoot }
+}
+if (-not (Test-Path $TargetWorkspace)) {
+  Fail "Target workspace does not exist: $TargetWorkspace"
+}
+$targetWorkspaceRoot = (Resolve-Path $TargetWorkspace).Path
 Set-Location $repoRoot
 
 $null = Ensure-CodeCli
@@ -241,20 +252,37 @@ if (-not $latestVsix) {
 
 $extDir = Join-Path $repoRoot '.tmp-vscode-ext'
 $userDir = Join-Path $repoRoot '.tmp-vscode-user'
-New-Item -ItemType Directory -Force -Path $extDir, $userDir | Out-Null
+$userSettingsDir = Join-Path $userDir 'User'
+New-Item -ItemType Directory -Force -Path $extDir, $userDir, $userSettingsDir | Out-Null
+
+$userSettings = [ordered]@{
+  'aylaLocalAgent.ollamaBaseUrl' = 'http://127.0.0.1:11434'
+  'aylaLocalAgent.activeModel' = $selectedModel
+  'aylaLocalAgent.defaultModel' = $selectedModel
+  'aylaLocalAgent.commandTimeoutMs' = 120000
+  'aylaLocalAgent.maxSteps' = 12
+  'ayla.gateway.enabled' = $true
+  'ayla.gateway.preferGateway' = $true
+  'ayla.gateway.mode' = 'required'
+  'ayla.gateway.baseUrl' = 'http://127.0.0.1:8089'
+  'ayla.gateway.autonomous.enabled' = $true
+  'ayla.gateway.autonomous.allowedScopes' = @()
+}
+$userSettings | ConvertTo-Json -Depth 10 | Set-Content -Path (Join-Path $userSettingsDir 'settings.json') -Encoding UTF8
 
 & code.cmd --extensions-dir $extDir --user-data-dir $userDir --install-extension $latestVsix.FullName --force
 if ($LASTEXITCODE -ne 0) {
   Fail 'VSIX install failed.'
 }
 
-& code.cmd --extensions-dir $extDir --user-data-dir $userDir $repoRoot
+& code.cmd --extensions-dir $extDir --user-data-dir $userDir $targetWorkspaceRoot
 if ($LASTEXITCODE -ne 0) {
   Fail 'Opening VS Code failed.'
 }
 
 Write-Host ''
 Write-Host 'Ayla launch complete.' -ForegroundColor Green
+Write-Host "Target workspace: $targetWorkspaceRoot" -ForegroundColor Cyan
 if ($gatewayReadiness.startedProcess) {
   Write-Host "Gateway was auto-started with '$($gatewayReadiness.attemptedCommand)'" -ForegroundColor Cyan
   Write-Host "Logs: $($gatewayReadiness.outLog) | $($gatewayReadiness.errLog)" -ForegroundColor Cyan

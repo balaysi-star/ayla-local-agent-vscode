@@ -8,9 +8,15 @@ import { GatewaySessionStore } from "./workSession/sessionStore";
 import { GatewayWorkSessionEngine } from "./workSession/workSessionEngine";
 import { handleGetWorkSession, handleGetWorkSessionEvents, handleGetWorkSessionReport, handleStartWorkSession } from "./routes/workSessions";
 import { handleGithubResearch, handleWebResearch } from "./routes/research";
+import { handleRunEvaluationsRoute } from "./routes/evals";
+import { handleExportDatasetRoute } from "./routes/datasets";
+import { handleGetAdapterRegistryRoute, handleRunTrainingRoute } from "./routes/training";
+import { handleRunTrainingCampaignRoute } from "./routes/trainingCampaign";
+import { handleRunAylaBenchmarkRoute } from "./routes/benchmark";
 import { parseToolIntent } from "./tools/toolIntentParser";
 import { evaluateToolIntentPolicy } from "./tools/toolPolicy";
 import { buildRepairStrategy } from "./repair/repairStrategist";
+import { handleApplyWorktreePatch, handleGetPersistedWorkSession, handleGetWorktreeSandbox } from "./routes/resumeWorktrees";
 
 async function readJson(req: IncomingMessage): Promise<any> {
   const chunks: Buffer[] = [];
@@ -61,6 +67,41 @@ export function createGatewayServer() {
       if (method === "GET" && /^\/v1\/work-sessions\/[^/]+\/report$/.test(url.pathname)) {
         const sessionId = url.pathname.split("/")[3] || "";
         return send(res, 200, handleGetWorkSessionReport(store, sessionId));
+      }
+      if (method === "GET" && /^\/v1\/persisted-work-sessions\/[^/]+$/.test(url.pathname)) {
+        const sessionId = url.pathname.split("/").at(-1) || "";
+        const workspaceRoot = url.searchParams.get("workspaceRoot") || process.cwd();
+        return send(res, 200, await handleGetPersistedWorkSession(workspaceRoot, sessionId));
+      }
+      if (method === "GET" && /^\/v1\/worktrees\/[^/]+$/.test(url.pathname)) {
+        const sessionId = url.pathname.split("/").at(-1) || "";
+        const workspaceRoot = url.searchParams.get("workspaceRoot") || process.cwd();
+        return send(res, 200, await handleGetWorktreeSandbox(workspaceRoot, sessionId));
+      }
+      if (method === "POST" && /^\/v1\/worktrees\/[^/]+\/apply$/.test(url.pathname)) {
+        const sessionId = url.pathname.split("/")[3] || "";
+        const payload = await readJson(req);
+        const workspaceRoot = typeof payload.workspaceRoot === "string" ? payload.workspaceRoot : process.cwd();
+        return send(res, 200, await handleApplyWorktreePatch(workspaceRoot, sessionId));
+      }
+      if (method === "POST" && url.pathname === "/v1/evals/run") {
+        return send(res, 200, await handleRunEvaluationsRoute(config, client, await readJson(req)));
+      }
+      if (method === "POST" && url.pathname === "/v1/evals/ayla-live") {
+        return send(res, 200, await handleRunAylaBenchmarkRoute(config, client, await readJson(req)));
+      }
+      if (method === "POST" && url.pathname === "/v1/datasets/export") {
+        return send(res, 200, await handleExportDatasetRoute(await readJson(req)));
+      }
+      if (method === "POST" && url.pathname === "/v1/training/run") {
+        return send(res, 200, await handleRunTrainingRoute(config, client, await readJson(req)));
+      }
+      if (method === "POST" && url.pathname === "/v1/training/campaign") {
+        return send(res, 200, await handleRunTrainingCampaignRoute(config, client, await readJson(req)));
+      }
+      if (method === "GET" && url.pathname === "/v1/training/adapters") {
+        const workspaceRoot = url.searchParams.get("workspaceRoot") || process.cwd();
+        return send(res, 200, await handleGetAdapterRegistryRoute(workspaceRoot));
       }
       if (method === "POST" && url.pathname === "/v1/research/web") {
         return send(res, 200, await handleWebResearch(config, await readJson(req)));

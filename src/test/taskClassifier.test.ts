@@ -33,3 +33,12 @@ test("repair prompt classifies as repair_existing", () => {
 test("casual prompt classifies as conversational", () => {
   assert.equal(classifyTaskPrompt("what can you do"), "conversational");
 });
+
+test("V9 classifies repository research, runtime investigation, bug diagnosis, test repair, and architecture review", () => {
+  assert.equal(classifyTaskPrompt("inspect git history and locate the caller"), "repo_research");
+  assert.equal(classifyTaskPrompt("inspect Ollama and Docker compose runtime health"), "runtime_investigation");
+  assert.equal(classifyTaskPrompt("diagnose the root cause of the broken route"), "bug_diagnosis");
+  assert.equal(classifyTaskPrompt("repair the failing pytest from validation evidence"), "test_failure_repair");
+  assert.equal(classifyTaskPrompt("review the orchestrator wiring and call graph"), "architecture_review");
+  assert.equal(classifyTaskPrompt("docker system prune"), "unsafe_or_disallowed");
+});

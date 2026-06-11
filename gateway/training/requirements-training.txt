@@ -1,0 +1,9 @@
+# Install in a dedicated training virtual environment.
+torch
+transformers
+datasets
+peft
+trl
+accelerate
+bitsandbytes
+safetensors

@@ -394,6 +394,30 @@ test("gateway chat request uses /v1/chat with model messages and task payload", 
     assert.equal(capturedBody.model, "ayla-local-coder:latest");
     assert.deepEqual(capturedBody.messages, messages);
     assert.equal(capturedBody.task, "Say exactly AYLA_AGENT_READY");
+    assert.equal(capturedBody.autonomous, true);
+    assert.equal(capturedBody.context.taskClass, "conversational");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("V9 gateway client sends runtime task classification to the autonomous loop", async () => {
+  const originalFetch = globalThis.fetch;
+  let capturedBody: any;
+  globalThis.fetch = (async (_input: unknown, init?: RequestInit) => {
+    capturedBody = JSON.parse(String(init?.body || "{}"));
+    return new Response(JSON.stringify({ reasoning_text: "OK" }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+  try {
+    const client = new GatewayClient({ ...makeConfig(), gatewayEnabled: true, maxSteps: 12 });
+    await client.chat("gemma4:12b", [{ role: "user", content: "Inspect Ollama and Stable Diffusion runtime health" }]);
+    assert.equal(capturedBody.autonomous, true);
+    assert.equal(capturedBody.maxSteps, 12);
+    assert.equal(capturedBody.context.taskClass, "runtime_investigation");
+    assert.equal(capturedBody.context.agentLoop.enabled, true);
+    assert.equal(capturedBody.context.toolProtocol.version, "AYLA_TOOL_PROTOCOL_V1");
+    assert.equal(capturedBody.context.toolProtocol.strict, true);
+    assert.equal(capturedBody.context.toolProtocol.maxRepairAttempts, 2);
   } finally {
     globalThis.fetch = originalFetch;
   }

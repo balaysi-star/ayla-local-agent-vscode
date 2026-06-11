@@ -82,13 +82,31 @@ function comparePathPrefix(target: string, root: string): boolean {
   return target === root || target.startsWith(`${root}/`);
 }
 
+function isWindowsAbsolutePath(input: string): boolean {
+  return /^[a-zA-Z]:[\\/]/.test(input.trim());
+}
+
 function normalizeWorkspaceRoot(input: string): string {
-  return path.resolve(input).replace(/\\/g, "/").replace(/\/+$/, "");
+  const trimmed = input.trim();
+  const resolved = isWindowsAbsolutePath(trimmed) ? trimmed : path.resolve(trimmed);
+  return resolved.replace(/\\/g, "/").replace(/\/+$/, "");
+}
+
+function resolvePortablePath(workspaceRoot: string, candidate: string): string {
+  const trimmed = candidate.trim();
+  if (isWindowsAbsolutePath(trimmed)) {
+    return trimmed.replace(/\\/g, "/").replace(/\/+$/, "");
+  }
+  if (path.isAbsolute(trimmed)) {
+    return path.resolve(trimmed).replace(/\\/g, "/").replace(/\/+$/, "");
+  }
+  const root = normalizeWorkspaceRoot(workspaceRoot);
+  return `${root}/${normalizeRelative(trimmed)}`.replace(/\/+$/, "");
 }
 
 function isWithinWorkspace(workspaceRoot: string, candidate: string): boolean {
   const normalizedRoot = normalizeWorkspaceRoot(workspaceRoot).toLowerCase();
-  const normalizedCandidate = path.resolve(candidate).replace(/\\/g, "/").toLowerCase();
+  const normalizedCandidate = resolvePortablePath(workspaceRoot, candidate).toLowerCase();
   return normalizedCandidate === normalizedRoot || normalizedCandidate.startsWith(`${normalizedRoot}/`);
 }
 
@@ -102,18 +120,18 @@ function resolvePolicyPath(workspaceRoot: string, candidate: string): {
   const requestedPath = candidate.trim();
   const normalizedPath = normalizeRelative(requestedPath);
   const normalizedWorkspaceRoot = normalizeWorkspaceRoot(workspaceRoot);
-  const absoluteCandidate = path.isAbsolute(requestedPath)
-    ? path.resolve(requestedPath)
-    : path.resolve(workspaceRoot, requestedPath);
+  const absoluteCandidate = resolvePortablePath(workspaceRoot, requestedPath);
   const withinWorkspace = isWithinWorkspace(workspaceRoot, absoluteCandidate);
+  const lowerRoot = normalizedWorkspaceRoot.toLowerCase();
+  const lowerCandidate = absoluteCandidate.toLowerCase();
   const relativePath = withinWorkspace
-    ? normalizeRelative(path.relative(normalizedWorkspaceRoot, absoluteCandidate))
+    ? normalizeRelative(lowerCandidate === lowerRoot ? "" : absoluteCandidate.slice(normalizedWorkspaceRoot.length + 1))
     : normalizedPath;
 
   return {
     requestedPath,
-    normalizedPath: normalizeRelative(absoluteCandidate),
-    workspaceRoot: normalizeRelative(normalizedWorkspaceRoot),
+    normalizedPath: absoluteCandidate,
+    workspaceRoot: normalizedWorkspaceRoot,
     relativePath,
     withinWorkspace
   };
@@ -125,13 +143,13 @@ function normalizeScopePattern(scopeRoot: string, workspaceRoot: string): string
     return undefined;
   }
   const normalized = normalizeRelative(trimmed);
-  if (path.isAbsolute(trimmed)) {
+  if (path.isAbsolute(trimmed) || isWindowsAbsolutePath(trimmed)) {
     if (!isWithinWorkspace(workspaceRoot, trimmed)) {
       return undefined;
     }
-    const absolute = path.resolve(trimmed);
-    const relative = path.relative(normalizeWorkspaceRoot(workspaceRoot), absolute);
-    return normalizeRelative(relative);
+    const absolute = resolvePortablePath(workspaceRoot, trimmed);
+    const root = normalizeWorkspaceRoot(workspaceRoot);
+    return normalizeRelative(absolute.toLowerCase() === root.toLowerCase() ? "" : absolute.slice(root.length + 1));
   }
   return normalized;
 }

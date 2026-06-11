@@ -1,5 +1,10 @@
 export type TaskClass =
   | "readiness_diagnostic"
+  | "repo_research"
+  | "bug_diagnosis"
+  | "runtime_investigation"
+  | "test_failure_repair"
+  | "architecture_review"
   | "create_validate"
   | "local_agent_safe_execution_gate"
   | "sidecar_structured_edit_validation_proof"
@@ -37,6 +42,32 @@ const REPAIR_PATTERNS = [
   /\brepair[-\s]?loop\b/i
 ];
 
+
+const RUNTIME_INVESTIGATION_PATTERNS = [
+  /\b(runtime|container|docker compose ps|ollama|stable diffusion|sd api|postgres|openapi|health endpoint)\b/i,
+  /(?:الحاويات|أولاما|التشغيل الفعلي|الخدمات المحلية|قاعدة البيانات)/u
+];
+
+const TEST_FAILURE_REPAIR_PATTERNS = [
+  /\b(failing (?:test|pytest)|test failure|pytest fail|validation failed|repair from test evidence)\b/i,
+  /(?:اختبار فاشل|فشل الاختبار|اصلح الاختبار)/u
+];
+
+const ARCHITECTURE_REVIEW_PATTERNS = [
+  /\b(architecture|wiring|call graph|dependency graph|authority path|orchestrator|system design)\b/i,
+  /(?:المعمارية|التوصيلات|مسار السلطة|العقل المركزي)/u
+];
+
+const BUG_DIAGNOSIS_PATTERNS = [
+  /\b(bug|defect|root cause|diagnose|trace the failure|why does|broken)\b/i,
+  /(?:شخص المشكلة|سبب المشكلة|جذر المشكلة|تتبع الفشل)/u
+];
+
+const REPO_RESEARCH_PATTERNS = [
+  /\b(inspect|read|search|locate|find the file|repo research|git history|who calls|where is)\b/i,
+  /(?:اقرأ الملفات|ابحث في المشروع|تاريخ git|تتبع الاستدعاءات)/u
+];
+
 const CONVERSATIONAL_PATTERNS = [
   /^\s*(hi|hello|hellow|hey)\b/i,
   /\bwhat can you do\b/i,
@@ -59,7 +90,13 @@ const SIDE_CAR_PATTERNS = [
 const UNSAFE_POSITIVE_TERMS = [
   "commit",
   "push",
-  "docker",
+  "docker build",
+  "docker run",
+  "docker down",
+  "docker rm",
+  "docker rmi",
+  "docker system prune",
+  "docker volume rm",
   "external services",
   "package install",
   "npm install",
@@ -99,6 +136,21 @@ export function classifyTaskPrompt(prompt: string): TaskClass {
   }
   if (isContainerSidecarStructuredEditValidationProofIntentPrompt(prompt)) {
     return "sidecar_structured_edit_validation_proof";
+  }
+  if (RUNTIME_INVESTIGATION_PATTERNS.some((pattern) => pattern.test(prompt))) {
+    return "runtime_investigation";
+  }
+  if (TEST_FAILURE_REPAIR_PATTERNS.some((pattern) => pattern.test(prompt))) {
+    return "test_failure_repair";
+  }
+  if (ARCHITECTURE_REVIEW_PATTERNS.some((pattern) => pattern.test(prompt))) {
+    return "architecture_review";
+  }
+  if (BUG_DIAGNOSIS_PATTERNS.some((pattern) => pattern.test(prompt))) {
+    return "bug_diagnosis";
+  }
+  if (REPO_RESEARCH_PATTERNS.some((pattern) => pattern.test(prompt))) {
+    return "repo_research";
   }
   if (REPAIR_PATTERNS.some((pattern) => pattern.test(prompt))) {
     return "repair_existing";

@@ -9,3 +9,7 @@ gateway-*.log
 *.log
 .DS_Store
 dist/
+
+.local/
+.ayla-agent-worktrees/
+.tmp-*/

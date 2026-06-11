@@ -2,7 +2,7 @@
   "name": "ayla-local-agent-vscode",
   "displayName": "Ayla Local Agent",
   "description": "Standalone internal-model chat participant for VS Code backed by Ollama.",
-  "version": "0.0.58",
+  "version": "0.0.60",
   "publisher": "internal",
   "engines": {
     "vscode": "^1.105.0"
@@ -266,7 +266,7 @@
         },
         "ayla.gateway.enabled": {
           "type": "boolean",
-          "default": false,
+          "default": true,
           "markdownDescription": "Enable the Ayla Local Brain Gateway as the primary local model/runtime provider."
         },
         "ayla.gateway.baseUrl": {
@@ -314,6 +314,19 @@
           "minimum": 1000,
           "maximum": 300000,
           "markdownDescription": "Timeout for container sidecar health, chat, and trace requests."
+        },
+        "ayla.gateway.autonomous.enabled": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Send VS Code gateway chat prompts through the bounded autonomous local tool loop by default."
+        },
+        "ayla.gateway.autonomous.allowedScopes": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "markdownDescription": "Optional workspace-relative scopes the autonomous gateway loop may read, search, diff, blame, or edit. Empty means entire workspace except blocked/secret paths."
         }
       }
     }
@@ -321,15 +334,20 @@
   "scripts": {
     "compile": "node -e \"require('fs').rmSync('out',{ recursive: true, force: true })\" && tsc -p ./",
     "watch": "tsc -w -p ./",
-    "test": "npm run compile && node --test out/test/*.test.js",
+    "test": "npm run compile && node --test --test-force-exit out/test/*.test.js",
     "package": "npx @vscode/vsce package --no-dependencies",
     "gateway:smoke": "npm run compile && node ./out/gatewaySmoke.js",
     "gateway:build": "node ./node_modules/typescript/bin/tsc -p ./gateway/tsconfig.json",
-    "gateway:test": "npm run gateway:build && node --test gateway/dist/tests/*.test.js",
+    "gateway:test": "npm run gateway:build && node gateway/scripts/run-test-files.js gateway/dist/tests/v11-v14.test.js gateway/dist/tests/v10-structured-protocol.test.js gateway/dist/tests/v9-classifier-runtime.test.js gateway/dist/tests/v9-python-loop.test.js gateway/dist/tests/v9-python-ast.test.js gateway/dist/tests/gateway.test.js",
     "gateway:start": "node ./gateway/dist/server.js",
     "gateway:dev": "npm run gateway:build && npm run gateway:start",
     "gateway:docker:build": "docker build -f gateway/Dockerfile -t ayla-local-brain-gateway .",
-    "gateway:docker:up": "docker compose -f docker-compose.local-brain-gateway.yml up --build -d"
+    "gateway:docker:up": "docker compose -f docker-compose.local-brain-gateway.yml up --build -d",
+    "gateway:eval": "npm run gateway:build && node ./gateway/dist/eval/runLocalEval.js",
+    "gateway:dataset": "npm run gateway:build && node ./gateway/dist/dataset/runDatasetExport.js",
+    "gateway:train": "npm run gateway:build && node ./gateway/dist/training/runLocalTraining.js",
+    "gateway:benchmark": "npm run gateway:build && node ./gateway/dist/eval/runAylaBenchmark.js",
+    "gateway:train:campaign": "npm run gateway:build && node ./gateway/dist/training/runTrainingCampaign.js"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

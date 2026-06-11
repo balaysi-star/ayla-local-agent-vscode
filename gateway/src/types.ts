@@ -1,5 +1,10 @@
 export type GatewayTaskClass =
   | "readiness_diagnostic"
+  | "repo_research"
+  | "bug_diagnosis"
+  | "runtime_investigation"
+  | "test_failure_repair"
+  | "architecture_review"
   | "create_validate"
   | "repair_existing"
   | "conversational"
@@ -85,11 +90,20 @@ export interface OutputAdapterResult {
     action: string;
     target?: string;
     command?: string;
+    startLine?: number;
+    endLine?: number;
   };
   confidence: "low" | "medium" | "high";
   missing_fields: string[];
   raw_output_ref: string;
   diagnostics: string[];
+  tool_protocol?: {
+    required: boolean;
+    valid: boolean;
+    source: "raw_json" | "fenced_json" | "legacy" | "none";
+    errors: string[];
+    version?: string;
+  };
 }
 
 export interface ToolIntentPolicyResult {
@@ -99,6 +113,8 @@ export interface ToolIntentPolicyResult {
     action: string;
     target?: string;
     command?: string;
+    startLine?: number;
+    endLine?: number;
   };
 }
 

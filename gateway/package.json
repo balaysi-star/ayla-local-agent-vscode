@@ -1,13 +1,18 @@
 {
   "name": "ayla-local-brain-gateway",
-  "version": "0.0.48",
+  "version": "0.0.50",
   "private": true,
   "type": "commonjs",
   "main": "dist/server.js",
   "scripts": {
     "build": "node ../node_modules/typescript/bin/tsc -p ./tsconfig.json",
-    "test": "npm run build && node --test dist/tests/*.test.js",
+    "test": "npm run build && node ./scripts/run-test-files.js dist/tests/v11-v14.test.js dist/tests/v10-structured-protocol.test.js dist/tests/v9-classifier-runtime.test.js dist/tests/v9-python-loop.test.js dist/tests/v9-python-ast.test.js dist/tests/gateway.test.js",
     "start": "node ./dist/server.js",
-    "dev": "npm run build && npm run start"
+    "dev": "npm run build && npm run start",
+    "eval": "npm run build && node ./dist/eval/runLocalEval.js",
+    "dataset": "npm run build && node ./dist/dataset/runDatasetExport.js",
+    "train": "npm run build && node ./dist/training/runLocalTraining.js",
+    "benchmark": "npm run build && node ./dist/eval/runAylaBenchmark.js",
+    "train:campaign": "npm run build && node ./dist/training/runTrainingCampaign.js"
   }
 }
