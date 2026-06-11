@@ -1,0 +1,22 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run AYLA Embedded CLI Extension",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}",
+        "--disable-extensions",
+        "${workspaceFolder}"
+      ],
+      "outFiles": ["${workspaceFolder}/out/**/*.js"],
+      "env": {
+        "AYLA_OLLAMA_BASE_URL": "http://127.0.0.1:11434",
+        "AYLA_MODEL": "gemma4:12b",
+        "AYLA_GATEWAY_PORT": "0"
+      },
+      "preLaunchTask": "compile (npm.cmd)"
+    }
+  ]
+}

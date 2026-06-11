@@ -1,0 +1,38 @@
+{
+  "workspaceRoot": "D:/octopus_main/Ayla",
+  "datasetDirectory": ".local/agent-datasets/<dataset_id>",
+  "baseModel": "gemma4:12b",
+  "trainingBaseModel": "D:/models/gemma4-12b-base",
+  "adapterName": "ayla-gemma-code-v14",
+  "candidateModel": "ayla-gemma-code-v14-candidate",
+  "trainingMethod": "qlora",
+  "executeTraining": false,
+  "registerCandidate": true,
+  "acknowledgeBaseModelAlignment": false,
+  "promoteIfAccepted": false,
+  "evaluationMaxSteps": 8,
+  "hardening": {
+    "validationRatio": 0.1,
+    "testRatio": 0.1,
+    "contaminationThreshold": 0.92,
+    "minimumExamples": 50
+  },
+  "hyperparameters": {
+    "epochs": 1,
+    "learningRate": 0.0002,
+    "batchSize": 1,
+    "gradientAccumulationSteps": 8,
+    "maxSequenceLength": 2048,
+    "loraRank": 16,
+    "loraAlpha": 32,
+    "loraDropout": 0.05,
+    "warmupRatio": 0.03,
+    "seed": 42,
+    "earlyStoppingPatience": 2
+  },
+  "thresholds": {
+    "minScoreImprovement": 0,
+    "maxScoreRegression": 0,
+    "requireNoPassedTaskRegression": true
+  }
+}

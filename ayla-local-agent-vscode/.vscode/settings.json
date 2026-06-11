@@ -1,0 +1,7 @@
+{
+  "ayla.ollama.baseUrl": "http://127.0.0.1:11434",
+  "ayla.ollama.model": "gemma4:12b",
+  "ayla.agent.maxSteps": 12,
+  "ayla.agent.chatTimeoutMs": 600000,
+  "ayla.embeddedCli.gatewayPort": 0
+}

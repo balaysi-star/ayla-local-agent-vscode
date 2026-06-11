@@ -1,0 +1,129 @@
+{
+  "name": "ayla-local-agent-vscode",
+  "displayName": "AYLA CLI for VS Code",
+  "description": "AYLA embedded local coding agent for VS Code: one CLI process, one agent engine, one governed tool path.",
+  "version": "0.0.68",
+  "publisher": "internal",
+  "engines": {
+    "vscode": "^1.105.0"
+  },
+  "categories": [
+    "AI",
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onChatParticipant:ayla-local-agent.chat",
+    "onCommand:aylaLocalAgent.showStatus",
+    "onCommand:aylaLocalAgent.applyLastPatch",
+    "onCommand:aylaLocalAgent.restartCli"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "chatParticipants": [
+      {
+        "id": "ayla-local-agent.chat",
+        "name": "ayla-cli",
+        "fullName": "AYLA CLI",
+        "description": "One embedded local coding agent engine. Prompts run through the same AYLA CLI, Gateway tool loop, worktree, validation, and evidence path.",
+        "isSticky": true,
+        "commands": [
+          {
+            "name": "status",
+            "description": "Show embedded AYLA CLI and local engine status."
+          },
+          {
+            "name": "resume",
+            "description": "Resume the latest interrupted AYLA session with a task."
+          },
+          {
+            "name": "apply",
+            "description": "Apply the latest reviewed AYLA worktree patch."
+          },
+          {
+            "name": "help",
+            "description": "Show AYLA CLI chat commands."
+          }
+        ]
+      }
+    ],
+    "commands": [
+      {
+        "command": "aylaLocalAgent.showStatus",
+        "title": "AYLA CLI: Show Status"
+      },
+      {
+        "command": "aylaLocalAgent.applyLastPatch",
+        "title": "AYLA CLI: Apply Last Patch"
+      },
+      {
+        "command": "aylaLocalAgent.restartCli",
+        "title": "AYLA CLI: Restart Embedded Engine"
+      }
+    ],
+    "configuration": {
+      "title": "AYLA Embedded CLI",
+      "properties": {
+        "ayla.ollama.baseUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:11434",
+          "markdownDescription": "Base URL of the local Ollama server used by the embedded AYLA CLI engine."
+        },
+        "ayla.ollama.model": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Exact local Ollama model id. Leave empty to use the first installed model; gemma4:12b is recommended when available."
+        },
+        "ayla.agent.maxSteps": {
+          "type": "number",
+          "default": 12,
+          "minimum": 1,
+          "maximum": 24,
+          "markdownDescription": "Maximum model/tool turns for one governed AYLA task."
+        },
+        "ayla.agent.chatTimeoutMs": {
+          "type": "number",
+          "default": 600000,
+          "minimum": 30000,
+          "maximum": 1800000,
+          "markdownDescription": "Maximum time for one local model task, including tool turns."
+        },
+        "ayla.embeddedCli.gatewayPort": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 65535,
+          "markdownDescription": "Loopback port for the embedded engine. Use 0 to reserve an isolated free port per VS Code window (recommended)."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "node -e \"require('fs').rmSync('out',{ recursive: true, force: true })\" && tsc -p ./",
+    "watch": "tsc -w -p ./",
+    "test": "npm run compile && node --test --test-force-exit out/test/*.test.js",
+    "package": "npx @vscode/vsce package --no-dependencies --allow-missing-repository --skip-license",
+    "gateway:smoke": "npm run compile && node ./out/gatewaySmoke.js",
+    "gateway:build": "node ./node_modules/typescript/bin/tsc -p ./gateway/tsconfig.json",
+    "gateway:test": "npm run gateway:build && node gateway/scripts/run-test-files.js gateway/dist/tests/v11-v14.test.js gateway/dist/tests/v10-structured-protocol.test.js gateway/dist/tests/v9-classifier-runtime.test.js gateway/dist/tests/v9-python-loop.test.js gateway/dist/tests/v9-python-ast.test.js gateway/dist/tests/gateway.test.js",
+    "gateway:start": "node ./gateway/dist/server.js",
+    "gateway:dev": "npm run gateway:build && npm run gateway:start",
+    "gateway:eval": "npm run gateway:build && node ./gateway/dist/eval/runLocalEval.js",
+    "gateway:dataset": "npm run gateway:build && node ./gateway/dist/dataset/runDatasetExport.js",
+    "gateway:train": "npm run gateway:build && node ./gateway/dist/training/runLocalTraining.js",
+    "gateway:benchmark": "npm run gateway:build && node ./gateway/dist/eval/runAylaBenchmark.js",
+    "gateway:train:campaign": "npm run gateway:build && node ./gateway/dist/training/runTrainingCampaign.js",
+    "cli": "node ./bin/ayla.js",
+    "cli:status": "node ./bin/ayla.js status",
+    "test:vscode": "npm run compile && node integration/vscode/run.js"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/vscode": "^1.105.0",
+    "@vscode/test-electron": "^2.5.2",
+    "typescript": "^5.9.3"
+  },
+  "bin": {
+    "ayla": "./bin/ayla.js"
+  }
+}

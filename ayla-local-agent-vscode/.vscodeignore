@@ -1,0 +1,39 @@
+# Development and local state
+.vscode/**
+.vscode-extensions/**
+.vscode-user-data/**
+.tmp-vscode-ext/**
+.tmp-vscode-user/**
+.tmp-vscode-*
+.git/**
+.local/**
+.env
+.env.*
+!.env.example
+*.log
+*.vsix
+
+# Source, tests, and build metadata not required at extension runtime
+src/**
+test-fixtures/**
+tsconfig.json
+package-lock.json
+node_modules/**
+out/test/**
+out/**/*.map
+
+# Gateway source and test/build inputs; retain gateway/dist runtime
+gateway/src/**
+gateway/scripts/**
+gateway/training/*.json
+gateway/schemas/**
+gateway/package.json
+gateway/tsconfig.json
+gateway/dist/tests/**
+gateway/dist/**/*.map
+
+integration/**
+
+# Repository-only launch/install assets
+scripts/**
+.gitignore

@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ayla://schemas/ayla-tool-result-v1.schema.json",
+  "title": "AYLA_TOOL_RESULT_V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "protocol",
+    "action",
+    "status",
+    "allowed",
+    "executed",
+    "reason",
+    "validation_result",
+    "truncated",
+    "output"
+  ],
+  "properties": {
+    "protocol": {
+      "const": "AYLA_TOOL_RESULT_V1"
+    },
+    "action": {
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "executed",
+        "not_executed",
+        "blocked"
+      ]
+    },
+    "allowed": {
+      "type": "boolean"
+    },
+    "executed": {
+      "type": "boolean"
+    },
+    "reason": {
+      "type": "string"
+    },
+    "target": {
+      "type": "string"
+    },
+    "command": {
+      "type": "string"
+    },
+    "cwd": {
+      "type": "string"
+    },
+    "exit_code": {
+      "type": "integer"
+    },
+    "validation_result": {
+      "enum": [
+        "passed",
+        "failed",
+        "not_validation"
+      ]
+    },
+    "failure_category": {
+      "type": "string"
+    },
+    "truncated": {
+      "type": "boolean"
+    },
+    "output": {
+      "type": "string"
+    }
+  }
+}
